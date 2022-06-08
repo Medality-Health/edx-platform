@@ -492,7 +492,6 @@ djangorestframework==3.12.4
     #   blockstore
     #   django-config-models
     #   django-user-tasks
-    #   djangorestframework-expander
     #   drf-jwt
     #   drf-nested-routers
     #   drf-yasg
@@ -507,8 +506,6 @@ djangorestframework==3.12.4
     #   learner-pathway-progress
     #   ora2
     #   super-csv
-djangorestframework-expander==0.2.3
-    # via blockstore
 djangorestframework-xml==2.0.0
     # via
     #   -r requirements/edx/testing.txt
@@ -971,6 +968,9 @@ newrelic==8.2.1
     # via
     #   -r requirements/edx/testing.txt
     #   blockstore
+newrelic==7.10.0.175
+    # via
+    #   -r requirements/edx/testing.txt
     #   edx-django-utils
 nltk==3.7
     # via
