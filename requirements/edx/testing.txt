@@ -1112,7 +1112,6 @@ pylti1p3==1.12.1
     # via -r requirements/edx/base.txt
 pymongo==3.12.3
     # via
-    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.txt
     #   edx-opaque-keys
     #   event-tracking
