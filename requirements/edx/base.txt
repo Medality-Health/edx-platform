@@ -875,7 +875,6 @@ pylti1p3==2.0.0
     # via -r requirements/edx/base.in
 pymongo==3.13.0
     # via
-    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.in
     #   -r requirements/edx/paver.txt
     #   edx-opaque-keys
