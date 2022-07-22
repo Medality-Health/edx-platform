@@ -51,7 +51,7 @@ from lms.djangoapps.discussion.django_comment_client.tests.utils import (
     topic_name_to_id
 )
 from lms.djangoapps.discussion.django_comment_client.utils import strip_none
-from lms.djangoapps.discussion.toggles import ENABLE_DISCUSSIONS_MFE
+from lms.djangoapps.discussion.toggles import ENABLE_DISCUSSIONS_MFE, ENABLE_DISCUSSIONS_MFE_FOR_EVERYONE
 from lms.djangoapps.discussion.views import _get_discussion_default_topic_id, course_discussions_settings_handler
 from lms.djangoapps.teams.tests.factories import CourseTeamFactory, CourseTeamMembershipFactory
 from openedx.core.djangoapps.course_groups.models import CourseUserGroup
@@ -2322,6 +2322,75 @@ class ForumMFETestCase(ForumsEnableMixin, SharedModuleStoreTestCase):
             response = self.client.get(f"{url}?{experience_in_url}")
             content = response.content.decode('utf8')
         if toggle_enabled and experience != "legacy":
+            assert "discussions-mfe-tab-embed" in content
+        else:
+            assert "discussions-mfe-tab-embed" not in content
+
+    @override_settings(DISCUSSIONS_MICROFRONTEND_URL="http://test.url")
+    @ddt.data(*itertools.product(("learner", "staff"), (True, False)))
+    @ddt.unpack
+    def test_correct_experience_on_base_url_for_everyone_flag(self, user_role, toggle_enabled):
+        """
+        Verify that the correct experience is shown based on the MFE toggle for everyone
+        for Legacy base url
+        """
+        if user_role == "staff":
+            user = self.staff_user
+        elif user_role == "learner":
+            user = self.user
+
+        with override_waffle_flag(ENABLE_DISCUSSIONS_MFE_FOR_EVERYONE, toggle_enabled):
+            self.client.login(username=user.username, password='test')
+            url = reverse("forum_form_discussion", args=[self.course.id])
+            response = self.client.get(url)
+            content = response.content.decode('utf8')
+        if toggle_enabled:
+            assert "discussions-mfe-tab-embed" in content
+        else:
+            assert "discussions-mfe-tab-embed" not in content
+
+    @override_settings(DISCUSSIONS_MICROFRONTEND_URL="http://test.url")
+    @ddt.data(*itertools.product(("learner", "staff"), (True, False)))
+    @ddt.unpack
+    def test_correct_experience_for_user_profile_url_for_everyone_flag(self, user_role, toggle_enabled):
+        """
+        Verify that the correct experience is shown based on the MFE toggle for everyone
+        for Legacy user profile url
+        """
+        if user_role == "staff":
+            user = self.staff_user
+        elif user_role == "learner":
+            user = self.user
+
+        with override_waffle_flag(ENABLE_DISCUSSIONS_MFE_FOR_EVERYONE, toggle_enabled):
+            self.client.login(username=user.username, password='test')
+            url = reverse("user_profile", args=[self.course.id, user.id])
+            response = self.client.get(url)
+            content = response.content.decode('utf8')
+        if toggle_enabled and user == "learner":
+            assert "discussions-mfe-tab-embed" in content
+        else:
+            assert "discussions-mfe-tab-embed" not in content
+
+    @override_settings(DISCUSSIONS_MICROFRONTEND_URL="http://test.url")
+    @ddt.data(*itertools.product(("learner", "staff"), (True, False)))
+    @ddt.unpack
+    def test_correct_experience_for_single_thread_url_for_everyone_flag(self, user_role, toggle_enabled):
+        """
+        Verify that the correct experience is shown based on the MFE toggle for everyone
+        for Legacy single thread url
+        """
+        if user_role == "staff":
+            user = self.staff_user
+        elif user_role == "learner":
+            user = self.user
+
+        with override_waffle_flag(ENABLE_DISCUSSIONS_MFE_FOR_EVERYONE, toggle_enabled):
+            self.client.login(username=user.username, password='test')
+            url = reverse("single_thread", args=[self.course.id, "test_discussion", "test_thread"])
+            response = self.client.get(url)
+            content = response.content.decode('utf8')
+        if toggle_enabled and user == "learner":
             assert "discussions-mfe-tab-embed" in content
         else:
             assert "discussions-mfe-tab-embed" not in content
