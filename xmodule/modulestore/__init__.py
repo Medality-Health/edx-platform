@@ -20,6 +20,10 @@ from sortedcontainers import SortedKeyList
 from xblock.core import XBlock
 from xblock.plugin import default_select
 from xblock.runtime import Mixologist
+from openedx_events.content_authoring.signals import COURSE_CATALOG_INFO_CHANGED
+from openedx_events.content_authoring.data import CourseCatalogData, CourseScheduleData
+from edx_event_bus_kafka.publishing.event_producer import send_to_event_bus
+from xmodule import course_metadata_utils
 
 # The below import is not used within this module, but ir is still needed becuase
 # other modules are imorting EdxJSONEncoder from here
@@ -320,6 +324,26 @@ class BulkOperationsMixin:
         if self.signal_handler and bulk_ops_record.has_publish_item:
             # We remove the branch, because publishing always means copying from draft to published
             self.signal_handler.send("course_published", course_key=course_id.for_branch(None))
+            full_course = self.get_course(course_id)
+            number = course_metadata_utils.number_for_course_location(self.location)
+            log.info(f"location? {full_course.location.org}")
+            course_data = CourseCatalogData(
+                course_key=course_id.for_branch,
+                name = full_course.display_name,
+                org = full_course.location.org,
+                number = number,
+                schedule_data = CourseScheduleData(
+                    start = full_course.start,
+                    pacing = 'self' if full_course.self_paced else 'instructor',
+                    end = full_course.end,
+                    enrollment_start = full_course.enrollment_start,
+                    enrollment_end = full_course.enrollment_start,
+                ),
+                effort = "",
+                hidden = "",
+                invitation_only = "",
+            )
+            log.info(f"full course: {full_course}")
             bulk_ops_record.has_publish_item = False
 
     def send_bulk_library_updated_signal(self, bulk_ops_record, library_id):
