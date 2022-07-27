@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.http import Http404, HttpResponseForbidden, HttpResponseServerError
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.template.context_processors import csrf
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -51,8 +51,8 @@ from lms.djangoapps.discussion.exceptions import TeamDiscussionHiddenFromUserExc
 from lms.djangoapps.discussion.toggles import (
     ENABLE_DISCUSSIONS_MFE,
     ENABLE_DISCUSSIONS_MFE_FOR_EVERYONE,
-    ENABLE_DISCUSSIONS_MFE_BANNER
-)
+    ENABLE_DISCUSSIONS_MFE_BANNER,
+    ENABLE_VIEW_MFE_IN_IFRAME)
 from lms.djangoapps.experiments.utils import get_experiment_user_metadata_context
 from lms.djangoapps.teams import api as team_api
 from openedx.core.djangoapps.discussions.url_helpers import get_discussions_mfe_url
