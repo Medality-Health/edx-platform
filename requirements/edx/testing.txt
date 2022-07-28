@@ -6,8 +6,6 @@
 #
 -e git+https://github.com/openedx/blockstore.git@1.2.1#egg=blockstore==1.2.1
     # via -r requirements/edx/base.txt
--e common/lib/capa
-    # via -r requirements/edx/base.txt
 -e git+https://github.com/edx/codejail.git@3.1.3#egg=codejail==3.1.3
     # via -r requirements/edx/base.txt
 -e git+https://github.com/edx/django-wiki.git@1.1.1#egg=django-wiki
@@ -576,7 +574,7 @@ edx-drf-extensions==8.0.1
     #   edx-rbac
     #   edx-when
     #   edxval
-edx-enterprise==3.53.4
+edx-enterprise==3.54.2
     # via
     #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.txt
