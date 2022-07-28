@@ -3,8 +3,8 @@ This module provides an abstraction for working with XModuleDescriptors
 that are stored in a database an accessible using their Location as an identifier
 """
 
-
 import datetime
+from django.conf import settings
 import logging
 import re
 import threading
@@ -20,10 +20,10 @@ from sortedcontainers import SortedKeyList
 from xblock.core import XBlock
 from xblock.plugin import default_select
 from xblock.runtime import Mixologist
-from openedx_events.content_authoring.signals import COURSE_CATALOG_INFO_CHANGED
 from openedx_events.content_authoring.data import CourseCatalogData, CourseScheduleData
+from openedx_events.content_authoring.signals import COURSE_CATALOG_INFO_CHANGED
 from edx_event_bus_kafka.publishing.event_producer import send_to_event_bus
-from xmodule import course_metadata_utils
+
 
 # The below import is not used within this module, but ir is still needed becuase
 # other modules are imorting EdxJSONEncoder from here
@@ -32,7 +32,8 @@ from xmodule.assetstore import AssetMetadata
 from xmodule.errortracker import make_error_tracker
 from xmodule.util.misc import get_library_or_course_attribute
 
-from .exceptions import InsufficientSpecificationError, InvalidLocationError
+from .exceptions import InsufficientSpecificationError, InvalidLocationError, ItemNotFoundError
+from ..course_metadata_utils import number_for_course_location
 
 log = logging.getLogger('edx.modulestore')
 
@@ -77,7 +78,8 @@ class ModuleStoreEnum:
     class Branch:
         """
         Branch constants to use for stores, such as Mongo, that have only 2 branches: DRAFT and PUBLISHED
-        Note: These values are taken from server configuration settings, so should not be changed without alerting DevOps  # lint-amnesty, pylint: disable=line-too-long
+        Note: These values are taken from server configuration settings, so should not be changed without alerting
+        DevOps  # lint-amnesty, pylint: disable=line-too-long
         """
         draft_preferred = 'draft-preferred'
         published_only = 'published-only'
@@ -121,6 +123,7 @@ class BulkOpsRecord:
     """
     For handling nesting of bulk operations
     """
+
     def __init__(self):
         self._active_count = 0
         self.has_publish_item = False
@@ -157,6 +160,7 @@ class ActiveBulkThread(threading.local):
     """
     Add the expected vars to the thread.
     """
+
     def __init__(self, bulk_ops_record_type, **kwargs):
         super().__init__(**kwargs)
         self.records = defaultdict(bulk_ops_record_type)
@@ -174,6 +178,7 @@ class BulkOperationsMixin:
     If a bulk write operation isn't active, then the changes are immediately written to the underlying
     mongo_connection.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._active_bulk_ops = ActiveBulkThread(self._bulk_ops_record_type)
@@ -211,9 +216,9 @@ class BulkOperationsMixin:
                 key_library = get_library_or_course_attribute(key)
                 course_library = get_library_or_course_attribute(course_key)
                 if (key == course_key) or (  # lint-amnesty, pylint: disable=too-many-boolean-expressions
-                        (key.org and key.org.lower() == course_key.org.lower()) and
-                        (key_library and key_library.lower() == course_library.lower()) and
-                        (key.run and key.run.lower() == course_key.run.lower())
+                    (key.org and key.org.lower() == course_key.org.lower()) and
+                    (key_library and key_library.lower() == course_library.lower()) and
+                    (key.run and key.run.lower() == course_key.run.lower())
                 ):
                     return record
 
@@ -287,7 +292,9 @@ class BulkOperationsMixin:
         if bulk_ops_record.active:
             return
 
-        dirty = self._end_outermost_bulk_operation(bulk_ops_record, structure_key)  # lint-amnesty, pylint: disable=assignment-from-no-return
+        dirty = self._end_outermost_bulk_operation(bulk_ops_record,
+                                                   structure_key)  # lint-amnesty,
+        # pylint: disable=assignment-from-no-return
 
         # The bulk op has ended. However, the signal tasks below still need to use the
         # built-up bulk op information (if the signals trigger tasks in the same thread).
@@ -317,6 +324,45 @@ class BulkOperationsMixin:
         if signal_handler and bulk_ops_record.has_publish_item:
             signal_handler.send("pre_publish", course_key=course_id)
 
+    def create_catalog_data_for_signal(self, course_id):
+        """
+        Creates a CourseCatalogData object from a course id by fetching from the module store
+
+        Arguments:
+            course_id (CourseKey): id of the course to process
+
+        Returns:
+            CourseCatalogData
+        """
+        # Most of this is copied from CourseOverview. We cannot import it
+        # because it would lead to circular imports
+        course_from_store = self.get_course(course_id)
+        number = number_for_course_location(course_from_store.location)
+        catalog_visibility = course_from_store.catalog_visibility
+
+        # see CourseDetail.fetch_about_attribute
+        effort_usage_key = course_id.make_usage_key('about', 'effort')
+        try:
+            effort = self.get_item(effort_usage_key).data
+        except ItemNotFoundError:
+            effort = None
+        return CourseCatalogData(
+            course_key=course_id.for_branch(None),
+            name=course_from_store.display_name,
+            org=course_from_store.location.org,
+            number=number,
+            schedule_data=CourseScheduleData(
+                start=course_from_store.start,
+                pacing='self' if course_from_store.self_paced else 'instructor',
+                end=course_from_store.end,
+                enrollment_start=course_from_store.enrollment_start,
+                enrollment_end=course_from_store.enrollment_start,
+            ),
+            effort=effort,
+            hidden=catalog_visibility in ['about', 'none'] or course_from_store.id.deprecated,
+            invitation_only=course_from_store.invitation_only,
+        )
+
     def send_bulk_published_signal(self, bulk_ops_record, course_id):
         """
         Sends out the signal that items have been published from within this course.
@@ -324,26 +370,9 @@ class BulkOperationsMixin:
         if self.signal_handler and bulk_ops_record.has_publish_item:
             # We remove the branch, because publishing always means copying from draft to published
             self.signal_handler.send("course_published", course_key=course_id.for_branch(None))
-            full_course = self.get_course(course_id)
-            number = course_metadata_utils.number_for_course_location(self.location)
-            log.info(f"location? {full_course.location.org}")
-            course_data = CourseCatalogData(
-                course_key=course_id.for_branch,
-                name = full_course.display_name,
-                org = full_course.location.org,
-                number = number,
-                schedule_data = CourseScheduleData(
-                    start = full_course.start,
-                    pacing = 'self' if full_course.self_paced else 'instructor',
-                    end = full_course.end,
-                    enrollment_start = full_course.enrollment_start,
-                    enrollment_end = full_course.enrollment_start,
-                ),
-                effort = "",
-                hidden = "",
-                invitation_only = "",
-            )
-            log.info(f"full course: {full_course}")
+            catalog_data = self.create_catalog_data_for_signal(course_id)
+            send_to_event_bus(COURSE_CATALOG_INFO_CHANGED, f"course-catalog-info-changed", 'catalog_info.course_key',
+                              {'catalog_info': catalog_data}, sync=True)
             bulk_ops_record.has_publish_item = False
 
     def send_bulk_library_updated_signal(self, bulk_ops_record, library_id):
@@ -359,6 +388,7 @@ class EditInfo:
     """
     Encapsulates the editing info of a block.
     """
+
     def __init__(self, **kwargs):
         self.from_storable(kwargs)
 
@@ -440,6 +470,7 @@ class BlockData:
     Allows the storing of meta-information about a structure that doesn't persist along with
     the structure itself.
     """
+
     def __init__(self, **kwargs):
         # Has the definition been loaded?
         self.definition_loaded = False
@@ -488,7 +519,7 @@ class BlockData:
         (in case it was taken from memcache)
         """
         if not hasattr(self, 'asides'):
-            self.asides = {}   # pylint: disable=attribute-defined-outside-init
+            self.asides = {}  # pylint: disable=attribute-defined-outside-init
         return self.asides
 
     def __repr__(self):
@@ -529,6 +560,7 @@ class SortedAssetList(SortedKeyList):  # lint-amnesty, pylint: disable=abstract-
     """
     List of assets that is sorted based on an asset attribute.
     """
+
     def __init__(self, **kwargs):
         self.filename_sort = False
         key_func = kwargs.get('key', None)
@@ -574,6 +606,7 @@ class ModuleStoreAssetBase:
     """
     The methods for accessing assets and their metadata
     """
+
     def _find_course_asset(self, asset_key):
         """
         Returns same as _find_course_assets plus the index to the given asset or None. Does not convert
@@ -612,7 +645,8 @@ class ModuleStoreAssetBase:
         mdata.from_storable(all_assets[asset_idx])
         return mdata
 
-    def get_all_asset_metadata(self, course_key, asset_type, start=0, maxresults=-1, sort=None, **kwargs):  # lint-amnesty, pylint: disable=unused-argument
+    def get_all_asset_metadata(self, course_key, asset_type, start=0, maxresults=-1, sort=None,
+                               **kwargs):  # lint-amnesty, pylint: disable=unused-argument
         """
         Returns a list of asset metadata for all assets of the given asset_type in the course.
 
@@ -688,6 +722,7 @@ class ModuleStoreAssetWriteInterface(ModuleStoreAssetBase):
     """
     The write operations for assets and asset metadata
     """
+
     def _save_assets_by_type(self, course_key, asset_metadata_list, course_assets, user_id, import_only):
         """
         Common private method that saves/updates asset metadata items in the internal modulestore
@@ -1018,7 +1053,7 @@ class ModuleStoreRead(ModuleStoreAssetBase, metaclass=ABCMeta):
         pass  # lint-amnesty, pylint: disable=unnecessary-pass
 
     @contextmanager
-    def bulk_operations(self, course_id, emit_signals=True, ignore_case=False):    # pylint: disable=unused-argument
+    def bulk_operations(self, course_id, emit_signals=True, ignore_case=False):  # pylint: disable=unused-argument
         """
         A context manager for notifying the store of bulk operations. This affects only the current thread.
         """
@@ -1162,6 +1197,7 @@ class ModuleStoreReadBase(BulkOperationsMixin, ModuleStoreRead):
     """
     Implement interface functionality that can be shared.
     """
+
     def __init__(  # lint-amnesty, pylint: disable=unused-argument
         self,
         contentstore=None,
@@ -1171,7 +1207,7 @@ class ModuleStoreReadBase(BulkOperationsMixin, ModuleStoreRead):
         # temporary parms to enable backward compatibility. remove once all envs migrated
         db=None, collection=None, host=None, port=None, tz_aware=True, user=None, password=None,
         # allow lower level init args to pass harmlessly
-        ** kwargs
+        **kwargs
     ):
         '''
         Set up the error-tracking logic.
@@ -1234,8 +1270,8 @@ class ModuleStoreReadBase(BulkOperationsMixin, ModuleStoreRead):
                 (
                     c.id for c in self.get_courses()
                     if c.id.org.lower() == course_id.org.lower() and
-                    c.id.course.lower() == course_id.course.lower() and
-                    c.id.run.lower() == course_id.run.lower()
+                       c.id.course.lower() == course_id.course.lower() and
+                       c.id.run.lower() == course_id.run.lower()
                 ),
                 None
             )
@@ -1281,6 +1317,7 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
     '''
     Implement interface functionality that can be shared.
     '''
+
     def __init__(self, contentstore, **kwargs):
         super().__init__(contentstore=contentstore, **kwargs)
         self.mixologist = Mixologist(self.xblock_mixins)
@@ -1302,7 +1339,8 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
             result[field.scope][field_name] = value
         return result
 
-    def create_course(self, org, course, run, user_id, fields=None, runtime=None, **kwargs):  # lint-amnesty, pylint: disable=arguments-differ
+    def create_course(self, org, course, run, user_id, fields=None, runtime=None,
+                      **kwargs):  # lint-amnesty, pylint: disable=arguments-differ
         """
         Creates any necessary other things for the course as a side effect and doesn't return
         anything useful. The real subclass should call this before it returns the course.
@@ -1323,7 +1361,8 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
             continue_version=True,
         )
 
-    def clone_course(self, source_course_id, dest_course_id, user_id, fields=None, **kwargs):  # lint-amnesty, pylint: disable=unused-argument
+    def clone_course(self, source_course_id, dest_course_id, user_id, fields=None,
+                     **kwargs):  # lint-amnesty, pylint: disable=unused-argument
         """
         This base method just copies the assets. The lower level impls must do the actual cloning of
         content.
@@ -1376,7 +1415,8 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
             fields (dict): A dictionary specifying initial values for some or all fields
                 in the newly created block
         """
-        item = self.create_item(user_id, parent_usage_key.course_key, block_type, block_id=block_id, fields=fields, **kwargs)  # lint-amnesty, pylint: disable=line-too-long
+        item = self.create_item(user_id, parent_usage_key.course_key, block_type, block_id=block_id, fields=fields,
+                                **kwargs)  # lint-amnesty, pylint: disable=line-too-long
         parent = self.get_item(parent_usage_key)
         parent.children.append(item.location)
         self.update_item(parent, user_id)
