@@ -10,6 +10,9 @@ from django.core.cache import cache
 from django.dispatch import receiver
 from pytz import UTC
 
+from edx_event_bus_kafka.publishing.event_producer import send_to_event_bus
+from openedx_events.content_authoring.signals import COURSE_CATALOG_INFO_CHANGED
+
 from cms.djangoapps.contentstore.courseware_index import (
     CourseAboutSearchIndexer,
     CoursewareSearchIndexer,
@@ -78,6 +81,12 @@ def listen_for_course_publish(sender, course_key, **kwargs):  # pylint: disable=
         update_search_index.delay(course_key_str, datetime.now(UTC).isoformat())
 
     update_discussions_settings_from_course_task.delay(course_key_str)
+
+@receiver(COURSE_CATALOG_INFO_CHANGED)
+def listen_for_course_catalog_info_changed(sender, signal, **kwargs):
+    print(f"kwargs: {kwargs}")
+    send_to_event_bus(COURSE_CATALOG_INFO_CHANGED, f"course-catalog-info-changed", 'catalog_info.course_key',
+                      {'catalog_info': kwargs['catalog_info']}, sync=True)
 
 
 @receiver(SignalHandler.course_deleted)
