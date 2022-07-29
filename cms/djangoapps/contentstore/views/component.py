@@ -354,7 +354,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         if category == 'problem':
             disabled_block_names = [block.name for block in disabled_xblocks()]
             advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
-                                        if advanced_problem_type['component'] not in disabled_block_names]
+                                      if advanced_problem_type['component'] not in disabled_block_names]
             for advanced_problem_type in advanced_problem_types:
                 component = advanced_problem_type['component']
                 boilerplate_name = advanced_problem_type['boilerplate_name']
