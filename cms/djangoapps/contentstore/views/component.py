@@ -296,6 +296,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     component_types = _filter_disabled_blocks(component_types)
 
     # Filter out discussion component from component_types if non-legacy discussion provider is configured for course
+    print(courselike)
     component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.location.course_key)
 
     # Content Libraries currently don't allow opting in to unsupported xblocks/problem types.
@@ -350,38 +351,37 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
                             )
                         )
 
-        # Add any advanced problem types. Note that these are different xblocks being stored as Advanced Problems,
-        # currently not supported in libraries .
-        if category == 'problem' and not library:
-            disabled_block_names = [block.name for block in disabled_xblocks()]
-            advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
-                                      if advanced_problem_type['component'] not in disabled_block_names]
-            for advanced_problem_type in advanced_problem_types:
-                component = advanced_problem_type['component']
-                boilerplate_name = advanced_problem_type['boilerplate_name']
+        # @medality_custom: start
+        disabled_block_names = [block.name for block in disabled_xblocks()]
+        advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
+                                    if advanced_problem_type['component'] not in disabled_block_names]
+        for advanced_problem_type in advanced_problem_types:
+            component = advanced_problem_type['component']
+            boilerplate_name = advanced_problem_type['boilerplate_name']
 
-                authorable_advanced_component_variations = authorable_xblocks(
-                    allow_unsupported=allow_unsupported, name=component
-                )
-                advanced_component_support_level = component_support_level(
-                    authorable_advanced_component_variations, component, boilerplate_name
-                )
-                if advanced_component_support_level:
-                    try:
-                        component_display_name = xblock_type_display_name(component)
-                    except PluginMissingError:
-                        log.warning('Unable to load xblock type %s to read display_name', component, exc_info=True)
-                    else:
-                        templates_for_category.append(
-                            create_template_dict(
-                                component_display_name,
-                                component,
-                                advanced_component_support_level,
-                                boilerplate_name,
-                                'advanced'
-                            )
+            authorable_advanced_component_variations = authorable_xblocks(
+                allow_unsupported=allow_unsupported, name=component
+            )
+            advanced_component_support_level = component_support_level(
+                authorable_advanced_component_variations, component, boilerplate_name
+            )
+            if advanced_component_support_level:
+                try:
+                    component_display_name = xblock_type_display_name(component)
+                except PluginMissingError:
+                    log.warning('Unable to load xblock type %s to read display_name', component, exc_info=True)
+                else:
+                    templates_for_category.append(
+                        create_template_dict(
+                            component_display_name,
+                            component,
+                            advanced_component_support_level,
+                            boilerplate_name,
+                            'advanced'
                         )
-                        categories.add(component)
+                    )
+                    categories.add(component)
+        # @medality_custom: end
 
         component_templates.append({
             "type": category,
@@ -390,9 +390,8 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
             "support_legend": create_support_legend_dict()
         })
 
-    # Libraries do not support advanced components at this time.
-    if library:
-        return component_templates
+
+    # @medality_custom: Do not return early for libraries
 
     # Check if there are any advanced modules specified in the course policy.
     # These modules should be specified as a list of strings, where the strings
