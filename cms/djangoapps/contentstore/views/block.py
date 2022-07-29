@@ -718,11 +718,7 @@ def _create_block(request):
 
     category = request.json['category']
     if isinstance(usage_key, LibraryUsageLocator):
-        # Only these categories are supported at this time.
-        if category not in ['html', 'problem', 'video']:
-            return HttpResponseBadRequest(
-                "Category '%s' not supported for Libraries" % category, content_type='text/plain'
-            )
+        # @medality_custom: accept all categories in libraries
 
         if _is_library_component_limit_reached(usage_key):
             return JsonResponse(

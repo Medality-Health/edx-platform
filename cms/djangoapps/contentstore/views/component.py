@@ -362,9 +362,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
                 template for template in templates_for_category if template['boilerplate_name'] == 'blank_common.yaml'
             ]
 
-        # Add any advanced problem types. Note that these are different xblocks being stored as Advanced Problems,
-        # currently not supported in libraries .
-        if category == 'problem' and not library and not use_new_problem_editor():
+        if not (category == 'problem' and use_new_problem_editor()):  # @medality_custom: support all block types
             disabled_block_names = [block.name for block in disabled_xblocks()]
             advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
                                       if advanced_problem_type['component'] not in disabled_block_names]
@@ -433,9 +431,8 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
             "support_legend": create_support_legend_dict()
         })
 
-    # Libraries do not support advanced components at this time.
-    if library:
-        return component_templates
+
+    # @medality_custom: Do not return early for libraries
 
     # Check if there are any advanced modules specified in the course policy.
     # These modules should be specified as a list of strings, where the strings
