@@ -713,7 +713,6 @@ def _create_item(request):
     category = request.json['category']
     if isinstance(usage_key, LibraryUsageLocator):
         # @medality_custom: accept all categories in libraries
-        log.info("EDX-PLATFORM FORK _create_item ----------------------------")
 
         if _is_library_component_limit_reached(usage_key):
             return JsonResponse(
