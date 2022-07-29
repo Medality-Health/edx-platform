@@ -362,7 +362,8 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
                 template for template in templates_for_category if template['boilerplate_name'] == 'blank_common.yaml'
             ]
 
-        if not (category == 'problem' and use_new_problem_editor()):  # @medality_custom: support all block types
+        # @medality_custom: support advanced problem types in libraries
+        if category == 'problem' and not use_new_problem_editor():
             disabled_block_names = [block.name for block in disabled_xblocks()]
             advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
                                       if advanced_problem_type['component'] not in disabled_block_names]
