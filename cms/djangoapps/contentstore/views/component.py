@@ -353,37 +353,37 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
                             )
                         )
 
-        # @medality_custom: start
-        disabled_block_names = [block.name for block in disabled_xblocks()]
-        advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
-                                    if advanced_problem_type['component'] not in disabled_block_names]
-        for advanced_problem_type in advanced_problem_types:
-            component = advanced_problem_type['component']
-            boilerplate_name = advanced_problem_type['boilerplate_name']
+        # @medality_custom: support advanced problem types in libraries
+        if category == 'problem':
+            disabled_block_names = [block.name for block in disabled_xblocks()]
+            advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
+                                        if advanced_problem_type['component'] not in disabled_block_names]
+            for advanced_problem_type in advanced_problem_types:
+                component = advanced_problem_type['component']
+                boilerplate_name = advanced_problem_type['boilerplate_name']
 
-            authorable_advanced_component_variations = authorable_xblocks(
-                allow_unsupported=allow_unsupported, name=component
-            )
-            advanced_component_support_level = component_support_level(
-                authorable_advanced_component_variations, component, boilerplate_name
-            )
-            if advanced_component_support_level:
-                try:
-                    component_display_name = xblock_type_display_name(component)
-                except PluginMissingError:
-                    log.warning('Unable to load xblock type %s to read display_name', component, exc_info=True)
-                else:
-                    templates_for_category.append(
-                        create_template_dict(
-                            component_display_name,
-                            component,
-                            advanced_component_support_level,
-                            boilerplate_name,
-                            'advanced'
+                authorable_advanced_component_variations = authorable_xblocks(
+                    allow_unsupported=allow_unsupported, name=component
+                )
+                advanced_component_support_level = component_support_level(
+                    authorable_advanced_component_variations, component, boilerplate_name
+                )
+                if advanced_component_support_level:
+                    try:
+                        component_display_name = xblock_type_display_name(component)
+                    except PluginMissingError:
+                        log.warning('Unable to load xblock type %s to read display_name', component, exc_info=True)
+                    else:
+                        templates_for_category.append(
+                            create_template_dict(
+                                component_display_name,
+                                component,
+                                advanced_component_support_level,
+                                boilerplate_name,
+                                'advanced'
+                            )
                         )
-                    )
-                    categories.add(component)
-        # @medality_custom: end
+                        categories.add(component)
 
         # Add library block types.
         if category == 'library' and not library:
