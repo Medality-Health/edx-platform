@@ -4,6 +4,7 @@
 
 
 import logging
+from django.conf import settings
 
 from web_fragments.fragment import Fragment
 from xblock.core import XBlock
@@ -37,7 +38,7 @@ class LibraryRoot(XBlock):
         help=_("Enter the names of the advanced components to use in your library."),
         scope=Scope.settings,
         xml_node=True,
-        default=["ambra", "ambra_quiz", "select_from_library"],  # @medality_custom: include custom xblocks by default
+        default=getattr(settings, "DEFAULT_LIBRARY_ADVANCED_MODULES", None),  # @medality_custom: include custom xblocks by default
     )
     show_children_previews = Boolean(
         display_name="Hide children preview",
