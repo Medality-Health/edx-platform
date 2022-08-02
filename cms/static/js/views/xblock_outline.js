@@ -92,7 +92,6 @@ function($, _, gettext, BaseView, ViewUtils, XBlockViewUtils, XBlockStringFieldE
                 }, true);
                 defaultNewChildName = childInfo.display_name;
             }
-            // @medality_custom: start remove course-global
             return {
                 xblockInfo: xblockInfo,
                 visibilityClass: XBlockViewUtils.getXBlockVisibilityClass(xblockInfo.get('visibility_state')),
@@ -110,7 +109,6 @@ function($, _, gettext, BaseView, ViewUtils, XBlockViewUtils, XBlockStringFieldE
                 hasExplicitStaffLock: this.model.get('has_explicit_staff_lock'),
                 staffOnlyMessage: this.model.get('staff_only_message'),
             };
-            // @medality_custom: end remove course-global
         },
 
         renderChildren: function() {

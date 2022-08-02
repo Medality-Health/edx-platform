@@ -717,18 +717,15 @@ def _create_block(request):
         raise PermissionDenied()
 
     category = request.json['category']
-    if isinstance(usage_key, LibraryUsageLocator):
-        # @medality_custom: accept all categories in libraries
-
-        if _is_library_component_limit_reached(usage_key):
-            return JsonResponse(
-                {
-                    'error': _('Libraries cannot have more than {limit} components').format(
-                        limit=settings.MAX_BLOCKS_PER_CONTENT_LIBRARY
-                    )
-                },
-                status=400
-            )
+    if isinstance(usage_key, LibraryUsageLocator) and _is_library_component_limit_reached(usage_key):
+        return JsonResponse(
+            {
+                'error': _('Libraries cannot have more than {limit} components').format(
+                    limit=settings.MAX_BLOCKS_PER_CONTENT_LIBRARY
+                )
+            },
+            status=400
+        )
 
     created_block = create_xblock(
         parent_locator=parent_locator,
