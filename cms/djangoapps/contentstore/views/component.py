@@ -144,7 +144,7 @@ def container_handler(request, usage_key_string):
                 prev_url = None
                 next_url = None
                 index = 1
-                parent_url = reverse_library_url('library_handler', courselike.id)
+                parent_url = reverse_library_url('library_handler', courselike.location.course_key)
                 xblock_info = create_xblock_info(xblock)
                 context_name = 'context_library'
             else:
