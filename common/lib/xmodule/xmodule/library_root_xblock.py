@@ -118,6 +118,11 @@ class LibraryRoot(XBlock):
         )
 
     @property
+    def id(self):
+        """Return the course_id for this course"""
+        return self.location.course_key
+
+    @property
     def display_org_with_default(self):
         """
         Org display names are not implemented. This just provides API compatibility with CourseBlock.

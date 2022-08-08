@@ -314,7 +314,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     component_types = _filter_disabled_blocks(component_types)
 
     # Filter out discussion component from component_types if non-legacy discussion provider is configured for course
-    component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.location.course_key)
+    component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.id)
 
     # Content Libraries currently don't allow opting in to unsupported xblocks/problem types.
     allow_unsupported = getattr(courselike, "allow_unsupported_xblocks", False)
