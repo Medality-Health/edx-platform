@@ -189,6 +189,7 @@ class BaseStudentModuleHistory(models.Model):
     # Using an inner class with a getter to simulate a classproperty
     # Similar to an instance's @property, but doesn't require a reference to an instance
     # Class.HISTORY_SAVING_TYPES is accessed without calling a method
+    # Must be calculated in order to avoid referencing settings before django is initialized
     class HistorySavingTypes:
         def __get__(self, *args, **kwargs):
             return getattr(settings, 'HISTORY_SAVING_TYPES', {'problem'})
