@@ -186,7 +186,15 @@ class BaseStudentModuleHistory(models.Model):
     .. no_pii:
     """
     objects = ChunkingManager()
-    HISTORY_SAVING_TYPES = {'problem'}
+
+    # Using an inner class with a getter to simulate a classproperty
+    # Similar to an instance's @property, but doesn't require a reference to an instance
+    # Class.HISTORY_SAVING_TYPES is accessed without calling a method
+    class HistorySavingTypes:
+        def __get__(self, *args, **kwargs):
+            return getattr(settings, 'HISTORY_SAVING_TYPES', {'problem'})
+
+    HISTORY_SAVING_TYPES = HistorySavingTypes()
 
     class Meta:
         abstract = True
