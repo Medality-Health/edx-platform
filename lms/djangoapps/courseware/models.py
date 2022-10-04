@@ -25,7 +25,7 @@ from django.db import models
 from django.db.models.signals import post_save
 
 from django.utils.translation import gettext_lazy as _
-from edx_django_utils.cache.utils import DEFAULT_REQUEST_CACHE
+from edx_django_utils.cache.utils import RequestCache
 from model_utils.models import TimeStampedModel
 from opaque_keys.edx.django.models import BlockTypeKeyField, CourseKeyField, LearningContextKeyField, UsageKeyField
 from lms.djangoapps.courseware.fields import UnsignedBigIntAutoField
@@ -245,14 +245,17 @@ class BaseStudentModuleHistory(models.Model):
 
     def save_history(sender, instance, history_model_cls, request_cache_key, **kwargs):
         if instance.module_type in history_model_cls.HISTORY_SAVING_TYPES:
+            request_cache = RequestCache('studentmodulehistory')
+            log.info("XXXXXXXXXXXXXXXXXXXXXXXXXXX")
+            log.info(f"RequestCache Before: {request_cache.data}")
             history_entry = None
             # To avoid duplicate history records within one request context, check if the student module instance
             # has already been updated and generated a history record. If so, then update that history record rather
             # than creating a new one
-            request_smh_cache = DEFAULT_REQUEST_CACHE.get_cached_response(request_cache_key).get_value_or_default({})
+            request_smh_cache = request_cache.get_cached_response(request_cache_key).get_value_or_default({})
             if instance.id in request_smh_cache:
                 smh_id = request_smh_cache[instance.id]
-                log.debug(f"Updating {history_model_cls.__name__}({smh_id}) to reflect StudentModule({instance.id}) changes")
+                log.info(f"Updating {history_model_cls.__name__}({smh_id}) to reflect StudentModule({instance.id}) changes")
                 try:
                     history_entry = history_model_cls.objects.get(id=smh_id)
                 except history_model_cls.DoesNotExist:
@@ -260,7 +263,7 @@ class BaseStudentModuleHistory(models.Model):
 
             # If not StudentModuleHistory has been created during this request yet, then create a new one
             if not history_entry:
-                log.debug(f"Creating new {history_model_cls.__name__} for StudentModule({instance.id})")
+                log.info(f"Creating new {history_model_cls.__name__} for StudentModule({instance.id})")
                 history_entry = history_model_cls(student_module=instance, version=None)
 
             # Regardless of whether this is a new or existing StudentModuleHistory, set its values to match the current
@@ -274,9 +277,10 @@ class BaseStudentModuleHistory(models.Model):
             # Update the RequestCache to map this StudentModule to the StudentModuleHistory for this request cycle
             # Only cache the id rather than the full object in order to be conscientious of space as the number of
             # records modified in one request can get large
-            DEFAULT_REQUEST_CACHE.setdefault(request_cache_key, {})
-            DEFAULT_REQUEST_CACHE.data[request_cache_key][instance.id] = history_entry.id
-            log.debug(f"Updating cache with StudentModule({instance.id}):{history_model_cls.__name__}({history_entry.id})")
+            request_cache.setdefault(request_cache_key, {})
+            request_cache.data[request_cache_key][instance.id] = history_entry.id
+            log.info(f"Updating cache with StudentModule({instance.id}):{history_model_cls.__name__}({history_entry.id})")
+            log.info(f"RequestCache After: {RequestCache('studentmodulehistory').data}")
 
 
 class StudentModuleHistory(BaseStudentModuleHistory):
