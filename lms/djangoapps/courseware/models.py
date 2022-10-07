@@ -246,8 +246,6 @@ class BaseStudentModuleHistory(models.Model):
     def save_history(sender, instance, history_model_cls, request_cache_key, **kwargs):
         if instance.module_type in history_model_cls.HISTORY_SAVING_TYPES:
             request_cache = RequestCache('studentmodulehistory')
-            log.info("XXXXXXXXXXXXXXXXXXXXXXXXXXX")
-            log.info(f"RequestCache Before: {request_cache.data}")
             history_entry = None
             # To avoid duplicate history records within one request context, check if the student module instance
             # has already been updated and generated a history record. If so, then update that history record rather
@@ -255,7 +253,6 @@ class BaseStudentModuleHistory(models.Model):
             request_smh_cache = request_cache.get_cached_response(request_cache_key).get_value_or_default({})
             if instance.id in request_smh_cache:
                 smh_id = request_smh_cache[instance.id]
-                log.info(f"Updating {history_model_cls.__name__}({smh_id}) to reflect StudentModule({instance.id}) changes")
                 try:
                     history_entry = history_model_cls.objects.get(id=smh_id)
                 except history_model_cls.DoesNotExist:
@@ -263,7 +260,6 @@ class BaseStudentModuleHistory(models.Model):
 
             # If not StudentModuleHistory has been created during this request yet, then create a new one
             if not history_entry:
-                log.info(f"Creating new {history_model_cls.__name__} for StudentModule({instance.id})")
                 history_entry = history_model_cls(student_module=instance, version=None)
 
             # Regardless of whether this is a new or existing StudentModuleHistory, set its values to match the current
@@ -279,8 +275,6 @@ class BaseStudentModuleHistory(models.Model):
             # records modified in one request can get large
             request_cache.setdefault(request_cache_key, {})
             request_cache.data[request_cache_key][instance.id] = history_entry.id
-            log.info(f"Updating cache with StudentModule({instance.id}):{history_model_cls.__name__}({history_entry.id})")
-            log.info(f"RequestCache After: {RequestCache('studentmodulehistory').data}")
 
 
 class StudentModuleHistory(BaseStudentModuleHistory):
