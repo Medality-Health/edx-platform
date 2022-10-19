@@ -105,6 +105,7 @@ cms/static/css/
 common/static/common/js/vendor/
 common/static/common/css/vendor/
 common/static/bundles
+common/static/medality_bundles
 webpack-stats.json
 
 ### Styling generated from templates
