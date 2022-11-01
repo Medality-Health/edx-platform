@@ -28,7 +28,7 @@ from common.djangoapps.xblock_django.models import XBlockStudioConfigurationFlag
 from cms.djangoapps.contentstore.toggles import use_new_problem_editor
 from openedx.core.lib.xblock_utils import get_aside_from_xblock, is_xblock_aside
 from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration
-from xmodule.library_root_xblock import LibraryRoot
+from xmodule.library_root_xblock import LibraryRoot  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.exceptions import ItemNotFoundError  # lint-amnesty, pylint: disable=wrong-import-order
 
@@ -105,7 +105,7 @@ def _load_mixed_class(category):
 
 @require_GET
 @login_required
-def container_handler(request, usage_key_string):
+def container_handler(request, usage_key_string):  # lint-amnesty, pylint: disable=too-many-statements
     """
     The restful handler for container xblock requests.
 
@@ -539,7 +539,7 @@ def _get_item_in_course(request, usage_key):
     if isinstance(course_key, CourseLocator):
         courselike = modulestore().get_course(course_key)
     elif isinstance(course_key, LibraryLocator):
-        courselike =  modulestore().get_library(course_key)
+        courselike = modulestore().get_library(course_key)
     item = modulestore().get_item(usage_key, depth=1)
     lms_link = get_lms_link_for_item(item.location)
     preview_lms_link = get_lms_link_for_item(item.location, preview=True)
