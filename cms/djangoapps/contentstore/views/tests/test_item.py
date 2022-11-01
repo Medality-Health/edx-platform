@@ -3060,24 +3060,24 @@ class TestLibraryXBlockCreation(ItemTest):
         xblock_locator = lib.children[0]
         self.assertEqual(self.store.get_item(xblock_locator).display_name, 'Test')
 
-    def test_no_add_discussion(self):
+    def test_add_discussion(self):
         """
         Verify we cannot add a discussion module to a Library.
         """
         lib = LibraryFactory.create()
         response = self.create_xblock(parent_usage_key=lib.location, display_name='Test', category='discussion')
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         lib = self.store.get_library(lib.location.library_key)
-        self.assertFalse(lib.children)
+        self.assertTrue(lib.children)
 
-    def test_no_add_advanced(self):
+    def test_add_advanced(self):
         lib = LibraryFactory.create()
         lib.advanced_modules = ['lti']
         lib.save()
         response = self.create_xblock(parent_usage_key=lib.location, display_name='Test', category='lti')
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         lib = self.store.get_library(lib.location.library_key)
-        self.assertFalse(lib.children)
+        self.assertTrue(lib.children)
 
 
 @ddt.ddt
