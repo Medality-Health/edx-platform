@@ -326,8 +326,8 @@ class UnitTestLibraries(CourseTestCase):
 
     def test_get_component_templates(self):
         """
-        Verify that templates for adding discussion and advanced components to
-        content libraries are not provided.
+        Verify that templates for adding discussion to content libraries are not provided,
+        but advanced components are provided.
         """
         lib = LibraryFactory.create()
         lib.advanced_modules = ['lti']
@@ -335,12 +335,12 @@ class UnitTestLibraries(CourseTestCase):
         templates = [template['type'] for template in get_component_templates(lib, library=True)]
         self.assertIn('problem', templates)
         self.assertNotIn('discussion', templates)
-        self.assertNotIn('advanced', templates)
+        self.assertIn('advanced', templates)
         self.assertNotIn('openassessment', templates)
 
     def test_advanced_problem_types(self):
         """
-        Verify that advanced problem types are not provided in problem component for libraries.
+        Verify that advanced problem types are also provided in problem component for libraries.
         """
         lib = LibraryFactory.create()
         lib.save()
@@ -358,7 +358,7 @@ class UnitTestLibraries(CourseTestCase):
         problem_type_categories = [problem_template['category'] for problem_template in problem_type_templates]
 
         for advance_problem_type in settings.ADVANCED_PROBLEM_TYPES:
-            self.assertNotIn(advance_problem_type['component'], problem_type_categories)
+            self.assertIn(advance_problem_type['component'], problem_type_categories)
 
     def test_manage_library_users(self):
         """
