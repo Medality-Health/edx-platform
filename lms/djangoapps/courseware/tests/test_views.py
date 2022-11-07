@@ -22,7 +22,8 @@ from django.test import RequestFactory, TestCase
 from django.test.client import Client
 from django.test.utils import override_settings
 from django.urls import reverse, reverse_lazy
-from edx_toggles.toggles.testutils import override_waffle_flag
+from edx_django_utils.cache.utils import RequestCache
+from edx_toggles.toggles.testutils import override_waffle_flag, override_waffle_switch
 from freezegun import freeze_time
 from opaque_keys.edx.keys import CourseKey, UsageKey
 from pytz import UTC
@@ -778,6 +779,15 @@ class ViewsTestCase(BaseViewsTestCase):
         )
 
         set_score(admin.id, usage_key, 0, 3)
+
+        # Typically an http request has its own thread and RequestCache which is used to ensure that only
+        # one StudentModuleHistory record is created per request. However, since tests are run locally 
+        # the score updates share the same thread. If the RequestCache is not cleared in between the two
+        # activities, then there will only be one StudentModuleHistory record that reflects the final state
+        # rather than one per action. Clearing the cache here allows the second action below to generate
+        # its own history record. The assertions below are then able to check that both states are recorded
+        # in the history.
+        RequestCache('studentmodulehistory').clear()
 
         state_client.set(
             username=admin.username,
