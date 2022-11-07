@@ -804,17 +804,17 @@ class ViewsTestCase(BaseViewsTestCase):
         response = self.client.get(url)
         response_content = html.unescape(response.content.decode('utf-8'))
 
-        # We have update the state 4 times: twice to change content, and twice
-        # to set the scores. We'll check that the identifying content from each is
+        # We have update the state 2 times. We'll check that the identifying content from each is
         # displayed (but not the order), and also the indexes assigned in the output
-        # #1 - #4
+        # #1 - #2
 
         assert '#1' in response_content
         assert json.dumps({'field_a': 'a', 'field_b': 'b'}, sort_keys=True, indent=2) in response_content
         assert 'Score: 0.0 / 3.0' in response_content
         assert json.dumps({'field_a': 'x', 'field_b': 'y'}, sort_keys=True, indent=2) in response_content
         assert 'Score: 3.0 / 3.0' in response_content
-        assert '#4' in response_content
+        assert '#2' in response_content
+        assert '#3' not in response_content
 
     @ddt.data(('America/New_York', -5),  # UTC - 5
               ('Asia/Pyongyang', 9),  # UTC + 9
