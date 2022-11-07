@@ -244,45 +244,45 @@ class BaseStudentModuleHistory(models.Model):
         return history_entries
 
     @staticmethod
-    def save_history_entry(sender, instance, history_model_cls, request_cache_key, **kwargs):
+    def save_history_entry(student_module, history_model_cls, request_cache_key):
         """
         When a StudentModule instance is updated, save the changes in the corresponding activity history table
         """
-        if instance.module_type in history_model_cls.HISTORY_SAVING_TYPES:
+        if student_module.module_type in history_model_cls.HISTORY_SAVING_TYPES:
             request_cache = RequestCache('studentmodulehistory')
             history_entry = None
             # To avoid duplicate history records within one request context, check if the student module instance
             # has already been updated and generated a history record. If so, then update that history record rather
             # than creating a new one
             request_smh_cache = request_cache.get_cached_response(request_cache_key).get_value_or_default({})
-            if instance.id in request_smh_cache:
-                smh_id = request_smh_cache[instance.id]
+            if student_module.id in request_smh_cache:
+                smh_id = request_smh_cache[student_module.id]
                 try:
                     history_entry = history_model_cls.objects.get(id=smh_id)
                 except history_model_cls.DoesNotExist:
                     log.error(
                         "Cached {} instance does not exist: {}({}) for StudentModule({})".format(
-                            history_model_cls.__name__, history_model_cls.__name__, smh_id, instance.id
+                            history_model_cls.__name__, history_model_cls.__name__, smh_id, student_module.id
                         )
                     )
 
             # If no StudentModuleHistory has been created yet during this request, then create a new one
             if not history_entry:
-                history_entry = history_model_cls(student_module=instance, version=None)
+                history_entry = history_model_cls(student_module=student_module, version=None)
 
             # Regardless of whether this is a new or existing StudentModuleHistory, set its values to match the current
             # state of the StudentModule record
-            history_entry.created = instance.modified
-            history_entry.state = instance.state
-            history_entry.grade = instance.grade
-            history_entry.max_grade = instance.max_grade
+            history_entry.created = student_module.modified
+            history_entry.state = student_module.state
+            history_entry.grade = student_module.grade
+            history_entry.max_grade = student_module.max_grade
             history_entry.save()
 
             # Update the RequestCache to map this StudentModule to the StudentModuleHistory for this request cycle
             # Only cache the id rather than the full object in order to be conscientious of space as the number of
             # records modified in one request can get large
             request_cache.setdefault(request_cache_key, {})
-            request_cache.data[request_cache_key][instance.id] = history_entry.id
+            request_cache.data[request_cache_key][student_module.id] = history_entry.id
 
 
 class StudentModuleHistory(BaseStudentModuleHistory):
@@ -306,7 +306,6 @@ class StudentModuleHistory(BaseStudentModuleHistory):
         we save.
         """
         BaseStudentModuleHistory.save_history_entry(
-            sender,
             instance,
             StudentModuleHistory,
             "lms.djangoapps.courseware.models.student_module_history_map"
