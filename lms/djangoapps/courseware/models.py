@@ -243,7 +243,7 @@ class BaseStudentModuleHistory(models.Model):
         return history_entries
 
     @staticmethod
-    def save_history(sender, instance, history_model_cls, request_cache_key, **kwargs):
+    def save_history_entry(sender, instance, history_model_cls, request_cache_key, **kwargs):
         """
         When a StudentModule instance is updated, save the changes in the corresponding activity history table
         """
@@ -260,7 +260,7 @@ class BaseStudentModuleHistory(models.Model):
                     history_entry = history_model_cls.objects.get(id=smh_id)
                 except history_model_cls.DoesNotExist:
                     log.error(
-                        "Cached {} instance does not exist: {}({}) for StudentModuel({})".format(
+                        "Cached {} instance does not exist: {}({}) for StudentModule({})".format(
                             history_model_cls.__name__, history_model_cls.__name__, smh_id, instance.id
                         )
                     )
@@ -298,13 +298,13 @@ class StudentModuleHistory(BaseStudentModuleHistory):
     def __str__(self):
         return str(repr(self))
 
-    def save_history(sender, instance, *args, **kwargs):  # pylint: disable=no-self-argument, unused-argument
+    def save_history(sender, instance, **kwargs):  # pylint: disable=no-self-argument, unused-argument
         """
         Checks the instance's module_type, and creates & saves a
         StudentModuleHistory entry if the module_type is one that
         we save.
         """
-        BaseStudentModuleHistory.save_history(
+        BaseStudentModuleHistory.save_history_entry(
             sender,
             instance,
             StudentModuleHistory,
