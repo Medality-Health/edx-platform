@@ -47,7 +47,6 @@ class StudentModuleHistoryExtended(BaseStudentModuleHistory):
         we save.
         """
         BaseStudentModuleHistory.save_history_entry(
-            sender,
             instance,
             StudentModuleHistoryExtended,
             "lms.djangoapps.coursewarehistoryextended.models.student_module_history_extended_map"
