@@ -847,7 +847,7 @@ class ViewsTestCase(BaseViewsTestCase):
         set_score(admin.id, usage_key, 0, 3)
 
         # Typically an http request has its own thread and RequestCache which is used to ensure that only
-        # one StudentModuleHistory record is created per request. However, since tests are run locally 
+        # one StudentModuleHistory record is created per request. However, since tests are run locally
         # the score updates share the same thread. If the RequestCache is not cleared in between the two
         # activities, then there will only be one StudentModuleHistory record that reflects the final state
         # rather than one per action. Clearing the cache here allows the second action below to generate
