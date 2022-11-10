@@ -25,7 +25,8 @@ XBLOCKS = [
     "library_sourced = xmodule.library_sourced_block:LibrarySourcedBlock",
     "lti = xmodule.lti_module:LTIBlock",
     "poll_question = xmodule.poll_module:PollBlock",
-    "problem = xmodule.capa_module:ProblemBlock",
+    # @medality_custom
+    # "problem = xmodule.capa_module:ProblemBlock",
     "randomize = xmodule.randomize_module:RandomizeBlock",
     "sequential = xmodule.seq_module:SequenceBlock",
     "slides = xmodule.template_module:TranslateCustomTagBlock",
