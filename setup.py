@@ -2,6 +2,7 @@
 Setup script for the Open edX package.
 """
 
+
 from setuptools import setup
 
 setup(
