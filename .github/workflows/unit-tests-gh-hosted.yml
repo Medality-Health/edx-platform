@@ -6,6 +6,8 @@ on:
     branches:
       - master
       - open-release/lilac.master
+      - medality-palm
+  workflow_dispatch:
 
 jobs:
   run-test:
@@ -69,6 +71,7 @@ jobs:
         env:
           PIP_SRC: ${{ runner.temp }}
         run: |
+          sed -i '/problem/ s/# //' setup.py
           make test-requirements
           if [[ "${{ matrix.django-version }}" != "pinned" ]]; then
             pip install "django~=${{ matrix.django-version }}.0"
@@ -112,6 +115,7 @@ jobs:
 
       - name: Install Required Python Dependencies
         run: |
+          sed -i '/problem/ s/# //' setup.py
           make test-requirements
           if [[ "${{ matrix.django-version }}" != "pinned" ]]; then
             pip install "django~=${{ matrix.django-version }}.0"
