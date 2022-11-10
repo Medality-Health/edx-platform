@@ -105,6 +105,7 @@ jobs:
 
       - name: Install Required Python Dependencies
         run: |
+            sed -i '/problem/ s/# //' common/lib/xmodule/setup.py
             pip install -r requirements/pip.txt
             pip install -r requirements/edx/development.txt --src ${{ runner.temp }}
             pip install "django~=${{ matrix.django-version }}.0"

@@ -127,7 +127,7 @@ class Randomization(String):
 # Studio doesn't provide XQueueService, but the LMS does.
 @XBlock.wants('xqueue')
 @XBlock.wants('call_to_action')
-class ProblemBlock(
+class _ProblemBlock(
     ScorableXBlockMixin,
     RawMixin,
     XmlMixin,
@@ -530,12 +530,12 @@ class ProblemBlock(
     def non_editable_metadata_fields(self):
         non_editable_fields = super().non_editable_metadata_fields
         non_editable_fields.extend([
-            ProblemBlock.due,
-            ProblemBlock.graceperiod,
-            ProblemBlock.force_save_button,
-            ProblemBlock.markdown,
-            ProblemBlock.use_latex_compiler,
-            ProblemBlock.show_correctness,
+            _ProblemBlock.due,
+            _ProblemBlock.graceperiod,
+            _ProblemBlock.force_save_button,
+            _ProblemBlock.markdown,
+            _ProblemBlock.use_latex_compiler,
+            _ProblemBlock.show_correctness,
         ])
         return non_editable_fields
 
@@ -2243,6 +2243,12 @@ class ProblemBlock(
         lcp_score = lcp.calculate_score()
         return Score(raw_earned=lcp_score['score'], raw_possible=lcp_score['total'])
 
+class ProblemBlock(_ProblemBlock):
+    """
+    @medality_custom
+    This is only to test that problem block passes unit tests when extended
+    """
+    pass
 
 class ComplexEncoder(json.JSONEncoder):
     """
