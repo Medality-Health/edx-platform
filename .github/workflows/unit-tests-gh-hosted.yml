@@ -77,6 +77,7 @@ jobs:
             pip install "django~=${{ matrix.django-version }}.0"
             pip check # fail if this test-reqs/Django combination is broken
           fi
+          python3 -c "import pkg_resources; print(list(pkg_resources.iter_entry_points(group='xblock.v1')))"
 
       - name: Setup and run tests
         uses: ./.github/actions/unit-tests
@@ -121,6 +122,7 @@ jobs:
             pip install "django~=${{ matrix.django-version }}.0"
             pip check # fail if this test-reqs/Django combination is broken
           fi
+          python3 -c "import pkg_resources; print(list(pkg_resources.iter_entry_points(group='xblock.v1')))"
 
       - name: verify unit tests count
         uses: ./.github/actions/verify-tests-count
