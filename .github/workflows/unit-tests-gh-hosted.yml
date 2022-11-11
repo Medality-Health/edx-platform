@@ -6,6 +6,8 @@ on:
     branches:
       - master
       - open-release/lilac.master
+      - medality-master
+  workflow_dispatch:
 
 jobs:
   run-test:
@@ -109,6 +111,7 @@ jobs:
             pip install -r requirements/pip.txt
             pip install -r requirements/edx/development.txt --src ${{ runner.temp }}
             pip install "django~=${{ matrix.django-version }}.0"
+            python3 -c "import pkg_resources; print(list(pkg_resources.iter_entry_points(group='xblock.v1')))"
 
       - name: verify unit tests count
         uses: ./.github/actions/verify-tests-count
