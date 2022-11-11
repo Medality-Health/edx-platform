@@ -2248,12 +2248,14 @@ class _ProblemBlock(
         lcp_score = lcp.calculate_score()
         return Score(raw_earned=lcp_score['score'], raw_possible=lcp_score['total'])
 
+
 class ProblemBlock(_ProblemBlock):
     """
     @medality_custom
     This is only to test that problem block passes unit tests when extended
     """
     pass
+
 
 class ComplexEncoder(json.JSONEncoder):
     """
