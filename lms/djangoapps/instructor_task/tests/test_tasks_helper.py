@@ -486,7 +486,7 @@ class TestProblemResponsesReport(TestReportMixin, InstructorTaskModuleTestCase):
         # @medality_custom: start
         from xmodule.capa_module import _ProblemBlock
         generate_report_data = _ProblemBlock.generate_report_data
-        delattr(_ProblemBlock, "generate_report_data")
+        del _ProblemBlock.generate_report_data
         try:
             yield
         finally:
