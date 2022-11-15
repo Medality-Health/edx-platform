@@ -73,7 +73,6 @@ jobs:
             # edx-platform installs some Python projects from within the edx-platform repo itself.
             pip install -e .
             pip install "django~=${{ matrix.django-version }}.0"
-            python3 -c "import pkg_resources; print(list(pkg_resources.iter_entry_points(group='xblock.v1')))"
 
       - name: Setup and run tests
         uses: ./.github/actions/unit-tests
@@ -115,7 +114,6 @@ jobs:
             pip install -r requirements/pip.txt
             make dev-requirements
             pip install "django~=${{ matrix.django-version }}.0"
-            python3 -c "import pkg_resources; print(list(pkg_resources.iter_entry_points(group='xblock.v1')))"
 
       - name: verify unit tests count
         uses: ./.github/actions/verify-tests-count

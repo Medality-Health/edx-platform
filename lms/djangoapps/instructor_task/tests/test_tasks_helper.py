@@ -483,15 +483,13 @@ class TestProblemResponsesReport(TestReportMixin, InstructorTaskModuleTestCase):
         Temporarily removes the generate_report_data method so we can test
         report generation when it's absent.
         """
-        # @medality_custom: start
-        from xmodule.capa_module import _ProblemBlock
-        generate_report_data = _ProblemBlock.generate_report_data
-        del _ProblemBlock.generate_report_data
+        from xmodule.capa_module import ProblemBlock
+        generate_report_data = ProblemBlock.generate_report_data
+        del ProblemBlock.generate_report_data
         try:
             yield
         finally:
-            _ProblemBlock.generate_report_data = generate_report_data
-        # @medality_custom: end
+            ProblemBlock.generate_report_data = generate_report_data
 
     @patch.dict('django.conf.settings.FEATURES', {'MAX_PROBLEM_RESPONSES_COUNT': 4})
     def test_build_student_data_limit(self):
