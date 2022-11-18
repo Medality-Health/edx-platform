@@ -49,8 +49,9 @@ matplotlib<3.4.0
 # Constraint from astroid 2.3.3
 wrapt==1.11.*
 
-# tests failing for pymongo==3.11
-pymongo<3.11
+# constrained in opaque_keys. migration guide here: https://pymongo.readthedocs.io/en/4.0/migrate-to-pymongo4.html
+# Major upgrade will be done in separate ticket.
+pymongo<4.0.0
 
 # sympy latest version causing test failures.
 # may be related to python35 version drop in 1.7.0. Needs to be tested before removing.
@@ -99,8 +100,3 @@ mistune<2.0.0
 # The PR https://github.com/celery/django-celery-results/pull/292 fixing this issue has been merged but
 # new version hasn't been released yet with the fix so pinning the version until django-celery-results>2.3.0 is out.
 django-celery-results<2.3.0
-
-# bleach==5.0.0 contains breaking changes related to clean() function used to sanitize css
-# Code needs to be refactored to fix the test failures with the new version.
-# Will be done in https://openedx.atlassian.net/browse/BOM-3374
-bleach<5.0.0
