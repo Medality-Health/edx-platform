@@ -29,6 +29,7 @@ def get_blocks(
         block_types_filter=None,
         hide_access_denials=False,
         allow_start_dates_in_future=False,
+        # @medality_custom
         addl_transformers=None
 ):
     """
@@ -68,6 +69,7 @@ def get_blocks(
         hide_access_denials = True
 
     # create ordered list of transformers, adding BlocksAPITransformer at end.
+    # @medality_custom
     transformers = BlockStructureTransformers(transformers=addl_transformers)
     if requested_fields is None:
         requested_fields = []
