@@ -5,9 +5,11 @@ Content Library Transformer.
 
 import json
 import logging
+import pkg_resources  # @medality_custom
 
 from eventtracking import tracker
 
+from xblock.fields import Scope  # @medality_custom
 from common.djangoapps.track import contexts
 from lms.djangoapps.courseware.models import StudentModule
 from openedx.core.djangoapps.content.block_structure.transformer import (
@@ -20,6 +22,24 @@ from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disa
 from ..utils import get_student_module_as_dict
 
 logger = logging.getLogger(__name__)
+
+
+# @medality_custom: start
+def is_library_block(block_key):
+    return block_key.block_type in ["library_content", "select_from_library"]
+
+
+def get_xblock_class(block_type):
+    """
+    Returns the class associated to the entry point of the given block type
+    """
+    group = "xblock.v1"
+    for entry_point in pkg_resources.iter_entry_points(group):
+        if entry_point.name == block_type:
+            return pkg_resources.load_entry_point(entry_point.dist, group, block_type)
+    return None
+
+# @medality_custom: end
 
 
 class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransformer):
@@ -65,7 +85,7 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
         # For each block check if block is library_content.
         # If library_content add children array to content_library_children field
         for block_key in block_structure.topological_traversal(
-                filter_func=lambda block_key: block_key.block_type == 'library_content',
+                filter_func=is_library_block,  # @medality_custom
                 yield_descendants_of_unyielded=True,
         ):
             xblock = block_structure.get_xblock(block_key)
@@ -77,8 +97,10 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
         all_library_children = set()
         all_selected_children = set()
         for block_key in block_structure:
-            if block_key.block_type != 'library_content':
+            # @medality_custom
+            if not is_library_block(block_key):
                 continue
+            xblock_class = get_xblock_class(block_key.block_type)
             library_children = block_structure.get_children(block_key)
             if library_children:
                 all_library_children.update(library_children)
@@ -86,42 +108,56 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
                 mode = block_structure.get_xblock_field(block_key, 'mode')
                 max_count = block_structure.get_xblock_field(block_key, 'max_count')
 
-                # Retrieve "selected" json from LMS MySQL database.
-                state_dict = get_student_module_as_dict(usage_info.user, usage_info.course_key, block_key)
-                for selected_block in state_dict.get('selected', []):
-                    # Add all selected entries for this user for this
-                    # library module to the selected list.
-                    block_type, block_id = selected_block
-                    usage_key = usage_info.course_key.make_usage_key(block_type, block_id)
-                    if usage_key in library_children:
-                        selected.append(selected_block)
+                # @medality_custom: start
+                # Retrieve the "selected" list based on the selected field's scope within this xblock
+                # For example: LibraryContentBlock stores selected in the user_state
+                # while SelectFromLibraryXBlock stores in the xblock settings
+                selected_prop = getattr(xblock_class, "selected", None)
+                if selected_prop and selected_prop.scope == Scope.settings:
+                    selected = modulestore().get_item(block_key).selected
+                else:
+                    # Retrieve "selected" json from LMS MySQL database.
+                    state_dict = get_student_module_as_dict(usage_info.user, usage_info.course_key, block_key)
+                    for selected_block in state_dict.get('selected', []):
+                        # Add all selected entries for this user for this
+                        # library module to the selected list.
+                        block_type, block_id = selected_block
+                        usage_key = usage_info.course_key.make_usage_key(block_type, block_id)
+                        if usage_key in library_children:
+                            selected.append(selected_block)
 
-                # Update selected
-                previous_count = len(selected)
-                block_keys = LibraryContentBlock.make_selection(selected, library_children, max_count, mode)
-                selected = block_keys['selected']
+                    # Update selected
+                    previous_count = len(selected)
+                    # Since multiple xblock types are now supported, first retrieve the correct class
+                    # for the current block_type in order to call the appropriate classmethod
+                    block_keys = xblock_class.make_selection(
+                        selected, library_children, max_count, mode
+                    )
+                    selected = block_keys['selected']
 
-                # Save back any changes
-                if any(block_keys[changed] for changed in ('invalid', 'overlimit', 'added')):
-                    state_dict['selected'] = selected
-                    StudentModule.save_state(
-                        student=usage_info.user,
-                        course_id=usage_info.course_key,
-                        module_state_key=block_key,
-                        defaults={
-                            'state': json.dumps(state_dict),
-                        },
+                    # Save back any changes
+                    if any(block_keys[changed] for changed in ('invalid', 'overlimit', 'added')):
+                        state_dict['selected'] = selected
+                        StudentModule.save_state(
+                            student=usage_info.user,
+                            course_id=usage_info.course_key,
+                            module_state_key=block_key,
+                            defaults={
+                                'state': json.dumps(state_dict),
+                            },
+                        )
+
+                    # publish events for analytics
+                    self._publish_events(
+                        block_structure,
+                        block_key,
+                        previous_count,
+                        max_count,
+                        block_keys,
+                        usage_info.user.id,
                     )
 
-                # publish events for analytics
-                self._publish_events(
-                    block_structure,
-                    block_key,
-                    previous_count,
-                    max_count,
-                    block_keys,
-                    usage_info.user.id,
-                )
+                # @medality_custom: end
                 all_selected_children.update(usage_info.course_key.make_usage_key(s[0], s[1]) for s in selected)
 
         def check_child_removal(block_key):
@@ -217,15 +253,31 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
         to match the order of the selections made and stored in the XBlock 'selected' field.
         """
         for block_key in block_structure:
-            if block_key.block_type != 'library_content':
+            # @medality_custom
+            if not is_library_block(block_key):
                 continue
 
             library_children = block_structure.get_children(block_key)
 
             if library_children:
-                state_dict = get_student_module_as_dict(usage_info.user, usage_info.course_key, block_key)
                 current_children_blocks = {block.block_id for block in library_children}
-                current_selected_blocks = {item[1] for item in state_dict.get('selected', [])}
+
+                # @medality_custom: start
+                # Retrieve the "selected" list based on the selected field's scope within this xblock
+                # For example: LibraryContentBlock stores selected in the user_state
+                # while SelectFromLibraryXBlock stores in the xblock settings
+                selected = []
+                xblock_class = get_xblock_class(block_key.block_type)
+                selected_prop = getattr(xblock_class, "selected", None)
+                if selected_prop and selected_prop.scope == Scope.settings:
+                    selected = modulestore().get_item(block_key).selected
+                else:
+                    # Retrieve "selected" json from LMS MySQL database.
+                    state_dict = get_student_module_as_dict(usage_info.user, usage_info.course_key, block_key)
+                    selected = state_dict.get('selected', [])
+
+                current_selected_blocks = {item[1] for item in selected}
+                # @medality_custom: end
 
                 # As the selections should have already been made by the ContentLibraryTransformer,
                 # the current children of the library_content block should be the same as the stored
@@ -240,5 +292,6 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
                         usage_info.user.username
                     )
                 else:
-                    ordering_data = {block[1]: position for position, block in enumerate(state_dict['selected'])}
+                    # @medality_custom
+                    ordering_data = {block[1]: position for position, block in enumerate(selected)}
                     library_children.sort(key=lambda block, data=ordering_data: data[block.block_id])

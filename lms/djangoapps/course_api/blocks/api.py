@@ -29,6 +29,8 @@ def get_blocks(
         block_types_filter=None,
         hide_access_denials=False,
         allow_start_dates_in_future=False,
+        # @medality_custom
+        addl_transformers=None
 ):
     """
     Return a serialized representation of the course blocks.
@@ -67,7 +69,8 @@ def get_blocks(
         hide_access_denials = True
 
     # create ordered list of transformers, adding BlocksAPITransformer at end.
-    transformers = BlockStructureTransformers()
+    # @medality_custom
+    transformers = BlockStructureTransformers(transformers=addl_transformers)
     if requested_fields is None:
         requested_fields = []
     include_completion = 'completion' in requested_fields
