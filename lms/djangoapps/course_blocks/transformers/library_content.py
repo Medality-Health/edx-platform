@@ -5,11 +5,11 @@ Content Library Transformer.
 
 import json
 import logging
-import pkg_resources
+import pkg_resources  # @medality_custom
 
 from eventtracking import tracker
 
-from xblock.fields import Scope
+from xblock.fields import Scope  # @medality_custom
 from common.djangoapps.track import contexts
 from lms.djangoapps.courseware.models import StudentModule
 from openedx.core.djangoapps.content.block_structure.transformer import (
@@ -24,6 +24,7 @@ from ..utils import get_student_module_as_dict
 logger = logging.getLogger(__name__)
 
 
+# @medality_custom: start
 def is_library_block(block_key):
     return block_key.block_type in ["library_content", "select_from_library"]
 
@@ -37,6 +38,8 @@ def get_xblock_class(block_type):
         if entry_point.name == block_type:
             return pkg_resources.load_entry_point(entry_point.dist, group, block_type)
     return None
+
+# @medality_custom: end
 
 
 class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransformer):
@@ -82,7 +85,7 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
         # For each block check if block is library_content.
         # If library_content add children array to content_library_children field
         for block_key in block_structure.topological_traversal(
-                filter_func=is_library_block,
+                filter_func=is_library_block,  # @medality_custom
                 yield_descendants_of_unyielded=True,
         ):
             xblock = block_structure.get_xblock(block_key)
@@ -94,6 +97,7 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
         all_library_children = set()
         all_selected_children = set()
         for block_key in block_structure:
+            # @medality_custom
             if not is_library_block(block_key):
                 continue
             xblock_class = get_xblock_class(block_key.block_type)
@@ -104,6 +108,7 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
                 mode = block_structure.get_xblock_field(block_key, 'mode')
                 max_count = block_structure.get_xblock_field(block_key, 'max_count')
 
+                # @medality_custom: start
                 # Retrieve the "selected" list based on the selected field's scope within this xblock
                 # For example: LibraryContentBlock stores selected in the user_state
                 # while SelectFromLibraryXBlock stores in the xblock settings
@@ -151,7 +156,8 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
                         block_keys,
                         usage_info.user.id,
                     )
-
+                
+                # @medality_custom: end
                 all_selected_children.update(usage_info.course_key.make_usage_key(s[0], s[1]) for s in selected)
 
         def check_child_removal(block_key):
@@ -247,6 +253,7 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
         to match the order of the selections made and stored in the XBlock 'selected' field.
         """
         for block_key in block_structure:
+            # @medality_custom
             if not is_library_block(block_key):
                 continue
 
@@ -255,6 +262,7 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
             if library_children:
                 current_children_blocks = {block.block_id for block in library_children}
 
+                # @medality_custom: start
                 # Retrieve the "selected" list based on the selected field's scope within this xblock
                 # For example: LibraryContentBlock stores selected in the user_state
                 # while SelectFromLibraryXBlock stores in the xblock settings
@@ -269,6 +277,7 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
                     selected = state_dict.get('selected', [])
 
                 current_selected_blocks = {item[1] for item in selected}
+                # @medality_custom: end
 
                 # As the selections should have already been made by the ContentLibraryTransformer,
                 # the current children of the library_content block should be the same as the stored
@@ -283,5 +292,6 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
                         usage_info.user.username
                     )
                 else:
+                    # @medality_custom
                     ordering_data = {block[1]: position for position, block in enumerate(selected)}
                     library_children.sort(key=lambda block, data=ordering_data: data[block.block_id])
