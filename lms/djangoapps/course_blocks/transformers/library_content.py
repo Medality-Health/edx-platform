@@ -9,6 +9,7 @@ import pkg_resources
 
 from eventtracking import tracker
 
+from xblock.fields import Scope
 from common.djangoapps.track import contexts
 from lms.djangoapps.courseware.models import StudentModule
 from openedx.core.djangoapps.content.block_structure.transformer import (
@@ -29,6 +30,9 @@ def is_library_block(block_key):
 
 
 def get_xblock_class(block_type):
+    """
+    Returns the class associated to the entry point of the given block type
+    """
     group = "xblock.v1"
     for entry_point in pkg_resources.iter_entry_points(group):
         if entry_point.name == block_type:
@@ -79,7 +83,7 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
         # For each block check if block is library_content.
         # If library_content add children array to content_library_children field
         for block_key in block_structure.topological_traversal(
-                filter_func=lambda block_key: is_library_block(block_key),
+                filter_func=is_library_block,
                 yield_descendants_of_unyielded=True,
         ):
             xblock = block_structure.get_xblock(block_key)
@@ -263,10 +267,10 @@ class ContentLibraryOrderTransformer(BlockStructureTransformer):
                 if selected_prop and selected_prop.scope == Scope.settings:
                     selected = modulestore().get_item(block_key).selected
                 else:
-                    # Retrieve "selected" json from LMS MySQL database.                    
+                    # Retrieve "selected" json from LMS MySQL database.
                     state_dict = get_student_module_as_dict(usage_info.user, usage_info.course_key, block_key)
-                    selected = state_dict.get('selected', [])                    
-                
+                    selected = state_dict.get('selected', [])
+
                 current_selected_blocks = {item[1] for item in selected}
 
                 # As the selections should have already been made by the ContentLibraryTransformer,
