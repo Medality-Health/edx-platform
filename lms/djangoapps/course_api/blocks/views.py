@@ -15,6 +15,7 @@ from opaque_keys.edx.keys import CourseKey, UsageKey
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 
+# @medality_custom
 from lms.djangoapps.course_blocks.transformers import library_content
 from lms.djangoapps.course_goals.models import UserActivity
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
@@ -238,6 +239,7 @@ class BlocksView(DeveloperErrorViewMixin, ListAPIView):
                     params.cleaned_data['return_type'],
                     params.cleaned_data.get('block_types_filter', None),
                     hide_access_denials=hide_access_denials,
+                    # @medality_custom
                     addl_transformers=[
                       library_content.ContentLibraryTransformer(),
                       library_content.ContentLibraryOrderTransformer(),
