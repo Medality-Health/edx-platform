@@ -241,8 +241,8 @@ class BlocksView(DeveloperErrorViewMixin, ListAPIView):
                     hide_access_denials=hide_access_denials,
                     # @medality_custom
                     addl_transformers=[
-                      library_content.ContentLibraryTransformer(),
-                      library_content.ContentLibraryOrderTransformer(),
+                        library_content.ContentLibraryTransformer(),
+                        library_content.ContentLibraryOrderTransformer(),
                     ],
                 )
             )

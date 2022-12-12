@@ -159,7 +159,7 @@ class ContentLibraryTransformer(FilteringTransformerMixin, BlockStructureTransfo
                         block_keys,
                         usage_info.user.id,
                     )
-                
+
                 # @medality_custom: end
                 all_selected_children.update(usage_info.course_key.make_usage_key(s[0], s[1]) for s in selected)
 
