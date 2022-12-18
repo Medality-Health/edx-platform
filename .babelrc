@@ -1,10 +1,10 @@
 {
     "plugins": [
-        "@babel/transform-object-assign",
-        "@babel/plugin-proposal-object-rest-spread",
+      "@babel/transform-object-assign",
+      "@babel/plugin-proposal-object-rest-spread",
     ],
     "presets": [
-        "@babel/react",
-        "@babel/preset-env"
+      "@babel/react",
+      "@babel/preset-env"
     ]
 }
