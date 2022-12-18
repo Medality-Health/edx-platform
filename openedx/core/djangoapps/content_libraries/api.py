@@ -439,7 +439,7 @@ def create_library(
         description=description,
     )
     # Now create the library reference in our database:
-    try:        
+    try:
         ref = ContentLibrary.objects.create(
             org=org,
             slug=slug,
