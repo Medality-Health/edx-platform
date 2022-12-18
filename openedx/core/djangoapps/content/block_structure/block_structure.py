@@ -11,7 +11,6 @@ The following internal data structures are implemented:
 
 
 from copy import deepcopy
-from datetime import datetime
 from functools import partial
 from logging import getLogger
 
