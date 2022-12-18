@@ -766,24 +766,6 @@ class BlockStructureBlockData(BlockStructure):
             self._block_data_map[usage_key] = block_data
             return block_data
 
-    def _make_datetime_field_compatible(self, field):
-        """
-        Creates a new datetime object to avoid issues occurring due to upgrading
-        python-datetuil version from 2.4.0
-
-        More info: https://openedx.atlassian.net/browse/BOM-2245
-        """
-        if isinstance(field, datetime):
-            if isinstance(field.tzinfo, tzlocal) and not hasattr(field.tzinfo, '_hasdst'):
-                # Todo: This log statement is added for temporary use only
-                logger.info('Python-dateutil logs: Making datetime field compatible to python-dateutil package')
-                return datetime(
-                    year=field.year, month=field.month, day=field.day,
-                    hour=field.hour, minute=field.minute, second=field.second,
-                    tzinfo=tzlocal()
-                )
-        return field
-
 
 class BlockStructureModulestoreData(BlockStructureBlockData):
     """
