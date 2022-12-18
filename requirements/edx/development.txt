@@ -967,10 +967,6 @@ mysqlclient==2.1.1
 newrelic==8.2.1
     # via
     #   -r requirements/edx/testing.txt
-    #   blockstore
-newrelic==7.10.0.175
-    # via
-    #   -r requirements/edx/testing.txt
     #   edx-django-utils
 nltk==3.7
     # via

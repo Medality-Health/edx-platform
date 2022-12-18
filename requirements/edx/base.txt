@@ -736,11 +736,7 @@ mysqlclient==2.1.1
     # via
     #   -r requirements/edx/base.in
     #   blockstore
-newrelic==8.2.1
-    # via
-    #   -r requirements/edx/base.in
-    #   blockstore
-newrelic==7.10.0.175
+newrelic==8.2.1    
     # via
     #   -r requirements/edx/base.in
     #   edx-django-utils
@@ -867,6 +863,7 @@ pylti1p3==1.12.1
     # via -r requirements/edx/base.in
 pymongo==3.12.3
     # via
+    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.in
     #   -r requirements/edx/paver.txt
     #   edx-opaque-keys
