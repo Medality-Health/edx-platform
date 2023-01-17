@@ -6,7 +6,7 @@ on:
     branches:
       - master
       - open-release/lilac.master
-      - medality-master
+      - medality-olive
   workflow_dispatch:
 
 jobs:
