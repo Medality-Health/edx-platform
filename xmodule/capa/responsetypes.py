@@ -48,6 +48,7 @@ import xmodule.capa.xqueue_interface as xqueue_interface
 from openedx.core.djangolib.markup import HTML, Text
 from openedx.core.lib import edx_six
 from openedx.core.lib.grade_utils import round_away_from_zero
+from edx_django_utils.plugins import pluggable_override # @medality_custom
 
 from . import correctmap
 from .registry import TagRegistry
@@ -775,24 +776,6 @@ class ChoiceResponse(LoncapaResponse):
         else:
             return CorrectMap(self.answer_id, 'incorrect')
 
-    def grade_via_correct_answers_count(self, **kwargs):
-        """TODO - write description"""
-
-        all_choices = kwargs['all_choices']
-        student_answer = kwargs['student_answer']
-
-        ca_max_grade = len(all_choices)
-        ca_current_grade = sum([1 for answer in student_answer if answer in self.correct_choices])
-
-        return_grade = round_away_from_zero(self.get_max_score() * float(ca_current_grade) / float(ca_max_grade), 2)
-
-        if ca_current_grade == ca_max_grade:
-            return CorrectMap(self.answer_id, correctness='correct')
-        elif ca_current_grade > 0:
-            return CorrectMap(self.answer_id, correctness='partially-correct', npoints=return_grade)
-        else:
-            return CorrectMap(self.answer_id, correctness='incorrect', npoints=0)
-
     def grade_without_partial_credit(self, **kwargs):
         """
         Standard grading for checkbox problems.
@@ -812,6 +795,8 @@ class ChoiceResponse(LoncapaResponse):
         else:
             return CorrectMap(self.answer_id, 'incorrect')
 
+    # @medality_custom
+    @pluggable_override('OVERRIDE_GET_CHOICERESPONSE_SCORE')
     def get_score(self, student_answers):
 
         # Setting up answer sets:
@@ -855,7 +840,6 @@ class ChoiceResponse(LoncapaResponse):
         graders = {
             'edc': self.grade_via_every_decision_counts,
             'halves': self.grade_via_halves,
-            'correct_answers': self.grade_via_correct_answers_count,
             'false': self.grade_without_partial_credit
         }
 
