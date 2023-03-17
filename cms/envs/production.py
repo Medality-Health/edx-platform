@@ -39,7 +39,7 @@ def get_env_setting(setting):
 
 ############### ALWAYS THE SAME ################################
 
-DEBUG = False
+DEBUG = True
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 

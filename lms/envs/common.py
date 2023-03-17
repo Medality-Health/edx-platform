@@ -2212,8 +2212,12 @@ MIDDLEWARE = [
     # Handles automatically storing user ids in django-simple-history tables when possible.
     'simple_history.middleware.HistoryRequestMiddleware',
 
+    # Request performance profiler
+    'django_cprofile_middleware.middleware.ProfilerMiddleware',
+
     # This must be last
     'openedx.core.djangoapps.site_configuration.middleware.SessionCookieDomainOverrideMiddleware',
+
 ]
 
 # Clickjacking protection can be disbaled by setting this to 'ALLOW'
