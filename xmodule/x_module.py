@@ -51,8 +51,8 @@ from common.djangoapps.xblock_django.constants import (
 
 log = logging.getLogger(__name__)
 
-class TestField(String):
-    something = "else"
+class TestField(List):
+    is_test_field = True
 
 XMODULE_METRIC_NAME = 'edxapp.xmodule'
 XMODULE_DURATION_METRIC_NAME = XMODULE_METRIC_NAME + '.duration'
@@ -779,8 +779,6 @@ class XModuleMixin(XModuleFields, XBlock):
         # 3. A generic string editor for anything else (editing JSON representation of the value).
         editor_type = "Generic"
         values = field.values
-        if isinstance(field, TestField):
-            editor_type = "TestField"
         if "values_provider" in field.runtime_options:
             values = field.runtime_options['values_provider'](self)
         if isinstance(values, (tuple, list)) and len(values) > 0:
@@ -798,6 +796,8 @@ class XModuleMixin(XModuleFields, XBlock):
             editor_type = "RelativeTime"
         elif isinstance(field, String) and field.name == "license":
             editor_type = "License"
+        if isinstance(field, TestField):
+            editor_type = "TestField"
         metadata_field_editor_info['type'] = editor_type
         metadata_field_editor_info['options'] = [] if values is None else values
 

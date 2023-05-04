@@ -20,7 +20,6 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         // Model is CMS.Models.MetadataCollection,
         initialize: function() {
-            console.log("something!!!!!")
             var self = this,
                 counter = 0,
                 locator = self.$el.closest('[data-locator]').data('locator'),
@@ -44,7 +43,7 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
                             Integer: 'Number'
                         },
                         type = model.getType();
-                        console.log('model:', model);
+
                         console.log('type:', type);
                         console.log('Metadata:', Metadata);
 
@@ -129,10 +128,6 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
         setValueInEditor: function(value) {
             this.$el.find('input').val(value);
         }
-    });
-
-    Metadata.TestField = Metadata.String.extend({
-        templateName: 'metadata-test-entry',
     });
 
     Metadata.VideoID = Metadata.String.extend({
@@ -357,6 +352,84 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
                     HtmlUtils.joinHtml(
                         HtmlUtils.HTML('<li class="list-settings-item">'),
                         HtmlUtils.HTML('<input type="text" class="input" value="<%- ele %>">'),
+                        HtmlUtils.HTML('<a href="#" class="remove-action remove-setting" data-index="<%- index %>"><span class="icon fa fa-times-circle" aria-hidden="true"></span><span class="sr">'), // eslint-disable-line max-len
+                        gettext('Remove'),
+                        HtmlUtils.HTML('</span></a>'),
+                        HtmlUtils.HTML('</li>')
+                    ).toString()
+                );
+                list.append(HtmlUtils.HTML($(template({ele: ele, index: index}))).toString());
+            });
+        },
+
+        addEntry: function(event) {
+            event.preventDefault();
+            // We don't call updateModel here since it's bound to the
+            // change event
+            var list = this.model.get('value') || [];
+            this.setValueInEditor(list.concat(['']));
+            this.$el.find('.create-setting').addClass('is-disabled').attr('aria-disabled', true);
+        },
+
+        removeEntry: function(event) {
+            event.preventDefault();
+            var entry = $(event.currentTarget).siblings().val();
+            this.setValueInEditor(_.without(this.model.get('value'), entry));
+            this.updateModel();
+            this.$el.find('.create-setting').removeClass('is-disabled').attr('aria-disabled', false);
+        },
+
+        enableAdd: function() {
+            this.$el.find('.create-setting').removeClass('is-disabled').attr('aria-disabled', false);
+        },
+
+        clear: function() {
+            AbstractEditor.prototype.clear.apply(this, arguments);
+            if (_.isNull(this.model.getValue())) {
+                this.$el.find('.create-setting').removeClass('is-disabled').attr('aria-disabled', false);
+            }
+        }
+    });
+
+    Metadata.TestField = AbstractEditor.extend({
+
+        events: {
+            'click .setting-clear': 'clear',
+            'keypress .setting-input': 'showClearButton',
+            'change input': 'updateModel',
+            'input input': 'enableAdd',
+            'click .create-setting': 'addEntry',
+            'click .remove-setting': 'removeEntry'
+        },
+
+        templateName: 'metadata-test-entry',
+
+        initialize: function() {
+            console.log('options:', this.model.getOptions());
+            AbstractEditor.prototype.initialize.apply(this);
+        },
+
+        getValueFromEditor: function() {
+            return _.map(
+                this.$el.find('li input'),
+                function(ele) { return ele.value.trim(); }
+            ).filter(_.identity);
+        },
+
+        setValueInEditor: function(value) {
+            var list = this.$el.find('ol');
+            var selectOptions = _.each(this.model.getOptions(), function(option) {
+                HtmlUtils.HTML(`<option value=${option.value}>${option.display_name}</option>`);
+            });
+
+            list.empty();
+            _.each(value, function(ele, index) {
+                var template = _.template(
+                    HtmlUtils.joinHtml(
+                        HtmlUtils.HTML('<li class="list-settings-item another-class">'),
+                        HtmlUtils.HTML('<select>'),
+                        selectOptions,
+                        HtmlUtils.HTML('</select>'),
                         HtmlUtils.HTML('<a href="#" class="remove-action remove-setting" data-index="<%- index %>"><span class="icon fa fa-times-circle" aria-hidden="true"></span><span class="sr">'), // eslint-disable-line max-len
                         gettext('Remove'),
                         HtmlUtils.HTML('</span></a>'),
