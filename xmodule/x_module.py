@@ -51,6 +51,9 @@ from common.djangoapps.xblock_django.constants import (
 
 log = logging.getLogger(__name__)
 
+class TestField(String):
+    something = "else"
+
 XMODULE_METRIC_NAME = 'edxapp.xmodule'
 XMODULE_DURATION_METRIC_NAME = XMODULE_METRIC_NAME + '.duration'
 XMODULE_METRIC_SAMPLE_RATE = 0.1
@@ -737,6 +740,7 @@ class XModuleMixin(XModuleFields, XBlock):
 
         return metadata_fields
 
+    # Use a pluggable override here?
     def _create_metadata_editor_info(self, field):
         """
         Creates the information needed by the metadata editor for a specific field.
@@ -775,6 +779,8 @@ class XModuleMixin(XModuleFields, XBlock):
         # 3. A generic string editor for anything else (editing JSON representation of the value).
         editor_type = "Generic"
         values = field.values
+        if isinstance(field, TestField):
+            editor_type = "TestField"
         if "values_provider" in field.runtime_options:
             values = field.runtime_options['values_provider'](self)
         if isinstance(values, (tuple, list)) and len(values) > 0:

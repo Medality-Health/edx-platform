@@ -20,6 +20,7 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         // Model is CMS.Models.MetadataCollection,
         initialize: function() {
+            console.log("something!!!!!")
             var self = this,
                 counter = 0,
                 locator = self.$el.closest('[data-locator]').data('locator'),
@@ -43,6 +44,9 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
                             Integer: 'Number'
                         },
                         type = model.getType();
+                        console.log('model:', model);
+                        console.log('type:', type);
+                        console.log('Metadata:', Metadata);
 
                     if (conversions[type]) {
                         type = conversions[type];
@@ -125,6 +129,10 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
         setValueInEditor: function(value) {
             this.$el.find('input').val(value);
         }
+    });
+
+    Metadata.TestField = Metadata.String.extend({
+        templateName: 'metadata-test-entry',
     });
 
     Metadata.VideoID = Metadata.String.extend({
