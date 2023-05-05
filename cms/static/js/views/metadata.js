@@ -1,6 +1,7 @@
 define(
     [
         'backbone',
+        '@selectize/selectize',
         'js/views/baseview', 'underscore', 'js/models/metadata', 'js/views/abstract_editor',
         'js/models/uploads', 'js/views/uploads',
         'js/models/license', 'js/views/license',
@@ -9,14 +10,22 @@ define(
         'js/views/video/translations_editor',
         'edx-ui-toolkit/js/utils/html-utils'
     ],
-function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog,
+function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog,
          LicenseModel, LicenseView, TranscriptUtils, VideoList, VideoTranslations, HtmlUtils) {
     'use strict';
+
+    function decodeHtml(html) {
+        var txt = document.createElement("textarea");
+        txt.innerHTML = html;
+        return txt.value;
+    }
 
     function convertToNumber(val) {
         var asNumber = Number(val);
         return isNaN(asNumber) ? val : asNumber;
     }
+
+    console.log('_Selectize:', _Selectize);
 
     var Metadata = {};
 
@@ -398,7 +407,6 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         events: {
             'click .setting-clear': 'clear',
-            'change select': 'updateModel',
             'click .create-setting': 'addEntry',
             'click .remove-setting': 'removeEntry'
         },
@@ -407,35 +415,52 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         getValueFromEditor: function() {
             return _.map(this.$el.find('select'), function(select) {
-                return convertToNumber(select.value);
+                const value = select.selectize.getValue();
+                return convertToNumber(value);
             });
         },
 
         setValueInEditor: function(value) {
-            var list = this.$el.find('ol');
-            var options  = this.model.getOptions();
+            const options  = this.model.getOptions().map((option) => {
+                return {
+                    ...option,
+                    display_name: decodeHtml(option.display_name),
+                }
+            });
+
+            const list = this.$el.find('ol');
+            const updateModel = this.updateModel.bind(this);
+            const defaultOption = options.length > 0 ? options[0].value : '';
 
             list.empty();
-            _.each(value, function(ele, index) {
-                var selectOptions = _.map(options, function(option, idx) {
-                    var useDefault = ele === '-' && idx === 0;
-                    var selected = ele == option.value || useDefault ? 'selected' : '';
-                    return HtmlUtils.HTML(`<option value="${option.value}" ${selected}>${option.display_name}</option>`);
+
+            _.each(value, function(val, index) {
+                const selectId = `multi-select-${index}`
+                list.append(`
+                    <li class="list-settings-item">
+                        <select id="${selectId}"></select>
+                        <a href="#" class="remove-action remove-setting" data-index="${index}">
+                            <span class="icon fa fa-times-circle" aria-hidden="true"></span>
+                            <span class="sr">Remove</span>
+                        </a>
+                    </li>
+                `);
+
+                const $select = list.find(`#${selectId}`).selectize({
+                    options,
+                    labelField: 'display_name',
+                    searchField: 'display_name',
+                    valueField: 'value',
                 });
 
-                var template = _.template(
-                    HtmlUtils.joinHtml(
-                        HtmlUtils.HTML('<li class="list-settings-item">'),
-                        HtmlUtils.HTML('<select style="width: 80%; margin-right: 10px;">'),
-                        ...selectOptions,
-                        HtmlUtils.HTML('</select>'),
-                        HtmlUtils.HTML('<a href="#" class="remove-action remove-setting" data-index="<%- index %>"><span class="icon fa fa-times-circle" aria-hidden="true"></span><span class="sr">'), // eslint-disable-line max-len
-                        gettext('Remove'),
-                        HtmlUtils.HTML('</span></a>'),
-                        HtmlUtils.HTML('</li>')
-                    ).toString()
-                );
-                list.append(HtmlUtils.HTML($(template({ele: ele, index: index}))).toString());
+                const _selectize = $select[0].selectize;
+
+                _selectize.setValue(val === '-' ? defaultOption : val);
+                _selectize.on('change', function(_value) {
+                    const value = convertToNumber(_value);
+                    _selectize.setValue(value);
+                    updateModel();
+                });
             });
         },
 
@@ -448,9 +473,9 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         removeEntry: function(event) {
             event.preventDefault();
-            var _entry = $(event.currentTarget).siblings().val();
-            var entry = convertToNumber(_entry);
-            this.setValueInEditor(_.without(this.model.get('value'), entry));
+            const select = $(event.currentTarget).siblings()[0];
+            const value = convertToNumber(select.selectize.getValue());
+            this.setValueInEditor(_.without(this.model.get('value'), value));
             this.updateModel();
         },
 
