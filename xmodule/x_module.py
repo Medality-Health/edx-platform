@@ -51,8 +51,6 @@ from common.djangoapps.xblock_django.constants import (
 
 log = logging.getLogger(__name__)
 
-class TestField(List):
-    is_test_field = True
 
 XMODULE_METRIC_NAME = 'edxapp.xmodule'
 XMODULE_DURATION_METRIC_NAME = XMODULE_METRIC_NAME + '.duration'
@@ -796,7 +794,7 @@ class XModuleMixin(XModuleFields, XBlock):
             editor_type = "RelativeTime"
         elif isinstance(field, String) and field.name == "license":
             editor_type = "License"
-        if isinstance(field, TestField):
+        if hasattr(field, "medality_custom_field"):
             editor_type = "TestField"
         metadata_field_editor_info['type'] = editor_type
         metadata_field_editor_info['options'] = [] if values is None else values

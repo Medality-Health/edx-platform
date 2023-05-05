@@ -1,5 +1,5 @@
 <div class="wrapper-comp-setting metadata-list-enum">
-  <label class="label setting-label" for="<%- uniqueId %>"><%- model.get('display_name')%> - CUSTOM</label>
+  <label class="label setting-label" for="<%- uniqueId %>"><%- model.get('display_name')%></label>
   <div id="<%- uniqueId %>" class="wrapper-list-settings">
     <ol class="list-settings">
 

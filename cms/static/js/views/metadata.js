@@ -395,9 +395,9 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         events: {
             'click .setting-clear': 'clear',
-            'keypress .setting-input': 'showClearButton',
-            'change input': 'updateModel',
-            'input input': 'enableAdd',
+            // 'keypress .setting-input': 'showClearButton',
+            'change select': 'updateModel',
+            // 'input input': 'enableAdd',
             'click .create-setting': 'addEntry',
             'click .remove-setting': 'removeEntry'
         },
@@ -405,30 +405,42 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
         templateName: 'metadata-test-entry',
 
         initialize: function() {
-            console.log('options:', this.model.getOptions());
+            this.defaultOption = '';
+            var options = this.model.getOptions();
+            if (options.length > 0) {
+                this.defaultOption = options[0];
+            }
+
             AbstractEditor.prototype.initialize.apply(this);
         },
 
+        updateModel: function() {
+            AbstractEditor.prototype.updateModel.apply(this);
+            console.log(this.model);
+        },
+
         getValueFromEditor: function() {
-            return _.map(
-                this.$el.find('li input'),
-                function(ele) { return ele.value.trim(); }
-            ).filter(_.identity);
+            return _.map(this.$el.find('select'), function(select) {
+                return select.value;
+            });
         },
 
         setValueInEditor: function(value) {
             var list = this.$el.find('ol');
-            var selectOptions = _.each(this.model.getOptions(), function(option) {
-                HtmlUtils.HTML(`<option value=${option.value}>${option.display_name}</option>`);
-            });
+            var options  = this.model.getOptions();
 
             list.empty();
             _.each(value, function(ele, index) {
+                var selectOptions = _.map(options, function(option) {
+                    var selected = ele == option.value ? 'selected' : '';
+                    return HtmlUtils.HTML(`<option value="${option.value}" ${selected}>${option.display_name}</option>`);
+                });
+
                 var template = _.template(
                     HtmlUtils.joinHtml(
                         HtmlUtils.HTML('<li class="list-settings-item another-class">'),
-                        HtmlUtils.HTML('<select>'),
-                        selectOptions,
+                        HtmlUtils.HTML('<select style="width: 80%; margin-right: 10px;">'),
+                        ...selectOptions,
                         HtmlUtils.HTML('</select>'),
                         HtmlUtils.HTML('<a href="#" class="remove-action remove-setting" data-index="<%- index %>"><span class="icon fa fa-times-circle" aria-hidden="true"></span><span class="sr">'), // eslint-disable-line max-len
                         gettext('Remove'),
@@ -442,11 +454,11 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         addEntry: function(event) {
             event.preventDefault();
-            // We don't call updateModel here since it's bound to the
-            // change event
-            var list = this.model.get('value') || [];
-            this.setValueInEditor(list.concat(['']));
-            this.$el.find('.create-setting').addClass('is-disabled').attr('aria-disabled', true);
+            var _list = this.model.get('value') || [];
+            var list = _list.concat([this.defaultOption]);
+
+            this.setValueInEditor(list);
+            this.model.setValue(list);
         },
 
         removeEntry: function(event) {
@@ -454,11 +466,6 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
             var entry = $(event.currentTarget).siblings().val();
             this.setValueInEditor(_.without(this.model.get('value'), entry));
             this.updateModel();
-            this.$el.find('.create-setting').removeClass('is-disabled').attr('aria-disabled', false);
-        },
-
-        enableAdd: function() {
-            this.$el.find('.create-setting').removeClass('is-disabled').attr('aria-disabled', false);
         },
 
         clear: function() {
