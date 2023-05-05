@@ -12,6 +12,12 @@ define(
 function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog,
          LicenseModel, LicenseView, TranscriptUtils, VideoList, VideoTranslations, HtmlUtils) {
     'use strict';
+
+    function convertToNumber(val) {
+        var asNumber = Number(val);
+        return isNaN(asNumber) ? val : asNumber;
+    }
+
     var Metadata = {};
 
     Metadata.Editor = BaseView.extend({
@@ -395,24 +401,12 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         events: {
             'click .setting-clear': 'clear',
-            // 'keypress .setting-input': 'showClearButton',
             'change select': 'updateModel',
-            // 'input input': 'enableAdd',
             'click .create-setting': 'addEntry',
             'click .remove-setting': 'removeEntry'
         },
 
         templateName: 'metadata-test-entry',
-
-        initialize: function() {
-            this.defaultOption = '';
-            var options = this.model.getOptions();
-            if (options.length > 0) {
-                this.defaultOption = options[0];
-            }
-
-            AbstractEditor.prototype.initialize.apply(this);
-        },
 
         updateModel: function() {
             AbstractEditor.prototype.updateModel.apply(this);
@@ -421,7 +415,7 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         getValueFromEditor: function() {
             return _.map(this.$el.find('select'), function(select) {
-                return select.value;
+                return convertToNumber(select.value);
             });
         },
 
@@ -431,14 +425,15 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
             list.empty();
             _.each(value, function(ele, index) {
-                var selectOptions = _.map(options, function(option) {
-                    var selected = ele == option.value ? 'selected' : '';
+                var selectOptions = _.map(options, function(option, idx) {
+                    var useDefault = ele === '-' && idx === 0;
+                    var selected = ele == option.value || useDefault ? 'selected' : '';
                     return HtmlUtils.HTML(`<option value="${option.value}" ${selected}>${option.display_name}</option>`);
                 });
 
                 var template = _.template(
                     HtmlUtils.joinHtml(
-                        HtmlUtils.HTML('<li class="list-settings-item another-class">'),
+                        HtmlUtils.HTML('<li class="list-settings-item">'),
                         HtmlUtils.HTML('<select style="width: 80%; margin-right: 10px;">'),
                         ...selectOptions,
                         HtmlUtils.HTML('</select>'),
@@ -454,16 +449,15 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
 
         addEntry: function(event) {
             event.preventDefault();
-            var _list = this.model.get('value') || [];
-            var list = _list.concat([this.defaultOption]);
-
-            this.setValueInEditor(list);
-            this.model.setValue(list);
+            var list = this.model.get('value') || [];
+            this.setValueInEditor(list.concat(['-']));
+            this.updateModel();
         },
 
         removeEntry: function(event) {
             event.preventDefault();
-            var entry = $(event.currentTarget).siblings().val();
+            var _entry = $(event.currentTarget).siblings().val();
+            var entry = convertToNumber(_entry);
             this.setValueInEditor(_.without(this.model.get('value'), entry));
             this.updateModel();
         },
