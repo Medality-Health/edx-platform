@@ -10,6 +10,7 @@ from functools import partial
 import yaml
 
 from django.conf import settings
+from edx_django_utils.plugins import pluggable_override
 from lazy import lazy
 from lxml import etree
 from opaque_keys.edx.asides import AsideDefinitionKeyV2, AsideUsageKeyV2
@@ -738,7 +739,7 @@ class XModuleMixin(XModuleFields, XBlock):
 
         return metadata_fields
 
-    # Use a pluggable override here?
+    @pluggable_override("OVERRIDE_CREATE_METADATA_EDITOR_INFO")
     def _create_metadata_editor_info(self, field):
         """
         Creates the information needed by the metadata editor for a specific field.
@@ -794,8 +795,6 @@ class XModuleMixin(XModuleFields, XBlock):
             editor_type = "RelativeTime"
         elif isinstance(field, String) and field.name == "license":
             editor_type = "License"
-        if hasattr(field, "medality_custom_field"):
-            editor_type = "TestField"
         metadata_field_editor_info['type'] = editor_type
         metadata_field_editor_info['options'] = [] if values is None else values
 

@@ -116,7 +116,7 @@ define(['backbone'], function(Backbone) {
     Metadata.DICT_TYPE = 'Dict';
     Metadata.VIDEO_LIST_TYPE = 'VideoList';
     Metadata.RELATIVE_TIME_TYPE = 'RelativeTime';
-    Metadata.TEST_TYPE = 'TestField'
+    Metadata.MULTI_SELECT = 'MultiSelect'
 
     return Metadata;
 });

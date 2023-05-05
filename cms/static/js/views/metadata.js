@@ -50,9 +50,6 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
                         },
                         type = model.getType();
 
-                        console.log('type:', type);
-                        console.log('Metadata:', Metadata);
-
                     if (conversions[type]) {
                         type = conversions[type];
                     }
@@ -397,7 +394,7 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
         }
     });
 
-    Metadata.TestField = AbstractEditor.extend({
+    Metadata.MultiSelect = AbstractEditor.extend({
 
         events: {
             'click .setting-clear': 'clear',
@@ -406,12 +403,7 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
             'click .remove-setting': 'removeEntry'
         },
 
-        templateName: 'metadata-test-entry',
-
-        updateModel: function() {
-            AbstractEditor.prototype.updateModel.apply(this);
-            console.log(this.model);
-        },
+        templateName: 'metadata-list-entry',
 
         getValueFromEditor: function() {
             return _.map(this.$el.find('select'), function(select) {
