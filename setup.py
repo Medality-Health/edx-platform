@@ -54,6 +54,7 @@ setup(
     # be reorganized to be a more conventional Python tree.
     packages=[
         "cms",
+        "common",
         "lms",
         "openedx",
         "xmodule",
