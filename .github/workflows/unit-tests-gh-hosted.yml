@@ -6,6 +6,8 @@ on:
     branches:
       - master
       - open-release/lilac.master
+      - medality-olive
+  workflow_dispatch:
 
 jobs:
   run-test:
@@ -65,6 +67,7 @@ jobs:
 
       - name: Install Required Python Dependencies
         run: |
+            sed -i '/problem/ s/# //' setup.py
             pip install -r requirements/pip.txt
             pip install -r requirements/edx/development.txt --src ${{ runner.temp }}
             # edx-platform installs some Python projects from within the edx-platform repo itself.
@@ -107,6 +110,7 @@ jobs:
 
       - name: Install Required Python Dependencies
         run: |
+            sed -i '/problem/ s/# //' setup.py
             pip install -r requirements/pip.txt
             make dev-requirements
             pip install "django~=${{ matrix.django-version }}.0"

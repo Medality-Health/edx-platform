@@ -14,6 +14,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
+from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from xblock.core import XBlock
 from xblock.django.request import django_to_webob_request, webob_to_django_response
 from xblock.exceptions import NoSuchHandlerError
@@ -26,10 +27,11 @@ from common.djangoapps.xblock_django.api import authorable_xblocks, disabled_xbl
 from common.djangoapps.xblock_django.models import XBlockStudioConfigurationFlag
 from openedx.core.lib.xblock_utils import get_aside_from_xblock, is_xblock_aside
 from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration
+from xmodule.library_root_xblock import LibraryRoot  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.exceptions import ItemNotFoundError  # lint-amnesty, pylint: disable=wrong-import-order
 
-from ..utils import get_lms_link_for_item, get_sibling_urls, reverse_course_url
+from ..utils import get_lms_link_for_item, get_sibling_urls, reverse_course_url, reverse_library_url
 from .helpers import get_parent_xblock, is_unit, xblock_type_display_name
 from .item import StudioEditModuleRuntime, add_container_page_publishing_info, create_xblock_info
 
@@ -102,7 +104,7 @@ def _load_mixed_class(category):
 
 @require_GET
 @login_required
-def container_handler(request, usage_key_string):
+def container_handler(request, usage_key_string):  # lint-amnesty, pylint: disable=too-many-statements
     """
     The restful handler for container xblock requests.
 
@@ -118,11 +120,12 @@ def container_handler(request, usage_key_string):
             raise Http404  # lint-amnesty, pylint: disable=raise-missing-from
         with modulestore().bulk_operations(usage_key.course_key):
             try:
-                course, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
+                courselike, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
             except ItemNotFoundError:
                 return HttpResponseBadRequest()
 
-            component_templates = get_component_templates(course)
+            is_library = isinstance(courselike, LibraryRoot)
+            component_templates = get_component_templates(courselike, library=is_library)
             ancestor_xblocks = []
             parent = get_parent_xblock(xblock)
             action = request.GET.get('action', 'view')
@@ -133,60 +136,75 @@ def container_handler(request, usage_key_string):
             is_first = True
             block = xblock
 
-            # Build the breadcrumbs and find the ``Unit`` ancestor
-            # if it is not the immediate parent.
-            while parent:
+            if is_library:
+                unit = courselike
+                subsection = courselike
+                section = courselike
+                prev_url = None
+                next_url = None
+                index = 1
+                parent_url = reverse_library_url('library_handler', courselike.id)
+                xblock_info = create_xblock_info(xblock)
+                context_name = 'context_library'
+            else:
+                # Build the breadcrumbs and find the ``Unit`` ancestor
+                # if it is not the immediate parent.
+                while parent:
 
-                if unit is None and is_unit(block):
-                    unit = block
+                    if unit is None and is_unit(block):
+                        unit = block
 
-                # add all to nav except current xblock page
-                if xblock != block:
-                    current_block = {
-                        'title': block.display_name_with_default,
-                        'children': parent.get_children(),
-                        'is_last': is_first
-                    }
-                    is_first = False
-                    ancestor_xblocks.append(current_block)
+                    # add all to nav except current xblock page
+                    if xblock != block:
+                        current_block = {
+                            'title': block.display_name_with_default,
+                            'children': parent.get_children(),
+                            'is_last': is_first
+                        }
+                        is_first = False
+                        ancestor_xblocks.append(current_block)
 
-                block = parent
-                parent = get_parent_xblock(parent)
+                    block = parent
+                    parent = get_parent_xblock(parent)
 
-            ancestor_xblocks.reverse()
+                ancestor_xblocks.reverse()
 
-            assert unit is not None, "Could not determine unit page"
-            subsection = get_parent_xblock(unit)
-            assert subsection is not None, "Could not determine parent subsection from unit " + str(
-                unit.location)
-            section = get_parent_xblock(subsection)
-            assert section is not None, "Could not determine ancestor section from unit " + str(unit.location)
+                assert unit is not None, "Could not determine unit page"
+                subsection = get_parent_xblock(unit)
+                assert subsection is not None, "Could not determine parent subsection from unit " + str(
+                    unit.location)
+                section = get_parent_xblock(subsection)
+                assert section is not None, "Could not determine ancestor section from unit " + str(unit.location)
 
-            # for the sequence navigator
-            prev_url, next_url = get_sibling_urls(subsection, unit.location)
-            # these are quoted here because they'll end up in a query string on the page,
-            # and quoting with mako will trigger the xss linter...
-            prev_url = quote_plus(prev_url) if prev_url else None
-            next_url = quote_plus(next_url) if next_url else None
+                # for the sequence navigator
+                prev_url, next_url = get_sibling_urls(subsection, unit.location)
+                # these are quoted here because they'll end up in a query string on the page,
+                # and quoting with mako will trigger the xss linter...
+                prev_url = quote_plus(prev_url) if prev_url else None
+                next_url = quote_plus(next_url) if next_url else None
 
-            # Fetch the XBlock info for use by the container page. Note that it includes information
-            # about the block's ancestors and siblings for use by the Unit Outline.
-            xblock_info = create_xblock_info(xblock, include_ancestor_info=is_unit_page)
+                # Fetch the XBlock info for use by the container page. Note that it includes information
+                # about the block's ancestors and siblings for use by the Unit Outline.
+                xblock_info = create_xblock_info(xblock, include_ancestor_info=is_unit_page)
 
-            if is_unit_page:
-                add_container_page_publishing_info(xblock, xblock_info)
+                if is_unit_page:
+                    add_container_page_publishing_info(xblock, xblock_info)
 
-            # need to figure out where this item is in the list of children as the
-            # preview will need this
-            index = 1
-            for child in subsection.get_children():
-                if child.location == unit.location:
-                    break
-                index += 1
+                # need to figure out where this item is in the list of children as the
+                # preview will need this
+                index = 1
+                for child in subsection.get_children():
+                    if child.location == unit.location:
+                        break
+                    index += 1
+
+                parent_url = reverse_course_url('course_handler', courselike.id)
+                context_name = 'context_course'
 
             return render_to_response('container.html', {
                 'language_code': request.LANGUAGE_CODE,
-                'context_course': course,  # Needed only for display of menus at top of page.
+                context_name: courselike,  # Needed only for display of menus at top of page.
+                'library': is_library,
                 'action': action,
                 'xblock': xblock,
                 'xblock_locator': xblock.location,
@@ -198,7 +216,7 @@ def container_handler(request, usage_key_string):
                 'prev_url': prev_url,
                 'next_url': next_url,
                 'new_unit_category': 'vertical',
-                'outline_url': '{url}?format=concise'.format(url=reverse_course_url('course_handler', course.id)),
+                'outline_url': '{url}?format=concise'.format(url=parent_url),
                 'ancestor_xblocks': ancestor_xblocks,
                 'component_templates': component_templates,
                 'xblock_info': xblock_info,
@@ -299,7 +317,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     component_types = _filter_disabled_blocks(component_types)
 
     # Filter out discussion component from component_types if non-legacy discussion provider is configured for course
-    component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.location.course_key)
+    component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.id)
 
     # Content Libraries currently don't allow opting in to unsupported xblocks/problem types.
     allow_unsupported = getattr(courselike, "allow_unsupported_xblocks", False)
@@ -353,9 +371,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
                             )
                         )
 
-        # Add any advanced problem types. Note that these are different xblocks being stored as Advanced Problems,
-        # currently not supported in libraries .
-        if category == 'problem' and not library:
+        if category == 'problem':
             disabled_block_names = [block.name for block in disabled_xblocks()]
             advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
                                       if advanced_problem_type['component'] not in disabled_block_names]
@@ -423,10 +439,6 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
             "display_name": component_display_names[category],
             "support_legend": create_support_legend_dict()
         })
-
-    # Libraries do not support advanced components at this time.
-    if library:
-        return component_templates
 
     # Check if there are any advanced modules specified in the course policy.
     # These modules should be specified as a list of strings, where the strings
@@ -514,12 +526,16 @@ def _get_item_in_course(request, usage_key):
     if not has_course_author_access(request.user, course_key):
         raise PermissionDenied()
 
-    course = modulestore().get_course(course_key)
+    courselike = None
+    if isinstance(course_key, CourseLocator):
+        courselike = modulestore().get_course(course_key)
+    elif isinstance(course_key, LibraryLocator):
+        courselike = modulestore().get_library(course_key)
     item = modulestore().get_item(usage_key, depth=1)
     lms_link = get_lms_link_for_item(item.location)
     preview_lms_link = get_lms_link_for_item(item.location, preview=True)
 
-    return course, item, lms_link, preview_lms_link
+    return courselike, item, lms_link, preview_lms_link
 
 
 @login_required
