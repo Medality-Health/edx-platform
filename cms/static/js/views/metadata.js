@@ -405,86 +405,37 @@ function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileU
 
     Metadata.MultiSelect = AbstractEditor.extend({
 
-        events: {
-            'click .setting-clear': 'clear',
-            'click .create-setting': 'addEntry',
-            'click .remove-setting': 'removeEntry'
-        },
+        events: {'click .setting-clear': 'clear'},
+        templateName: 'metadata-multiselect-entry',
 
-        templateName: 'metadata-list-entry',
-
-        getValueFromEditor: function() {
-            return _.map(this.$el.find('select'), function(select) {
-                const value = select.selectize.getValue();
-                return convertToNumber(value);
-            });
-        },
-
-        setValueInEditor: function(value) {
-            const options  = this.model.getOptions().map((option) => {
-                return {
+        setValueInEditor: function(values) {
+            const model = this.model;
+            const options = this.model.getOptions().map((option) => ({
                     ...option,
                     display_name: decodeHtml(option.display_name),
-                }
+                })
+            );
+
+            const $select = $(this.$el.find('select')[0]).selectize({
+                plugins: ['clear_button'],
+                persist: false,
+                maxItems: null,
+                valueField: 'value',
+                labelField: 'display_name',
+                searchField: 'display_name',
+                options,
             });
 
-            const list = this.$el.find('ol');
-            const updateModel = this.updateModel.bind(this);
-            const defaultOption = options.length > 0 ? options[0].value : '';
+            const selectize = $select[0].selectize;
 
-            list.empty();
-
-            _.each(value, function(val, index) {
-                const selectId = `multi-select-${index}`
-                list.append(`
-                    <li class="list-settings-item">
-                        <select id="${selectId}"></select>
-                        <a href="#" class="remove-action remove-setting" data-index="${index}">
-                            <span class="icon fa fa-times-circle" aria-hidden="true"></span>
-                            <span class="sr">Remove</span>
-                        </a>
-                    </li>
-                `);
-
-                const $select = list.find(`#${selectId}`).selectize({
-                    options,
-                    labelField: 'display_name',
-                    searchField: 'display_name',
-                    valueField: 'value',
-                });
-
-                const _selectize = $select[0].selectize;
-
-                _selectize.setValue(val === '-' ? defaultOption : val);
-                _selectize.on('change', function(_value) {
-                    const value = convertToNumber(_value);
-                    _selectize.setValue(value);
-                    updateModel();
-                });
+            selectize.setValue(values);
+            selectize.on('change', function(_values) {
+                _values = _values ?? [];
+                const asNumbers = _values.map((v) => convertToNumber(v))
+                selectize.setValue(asNumbers);
+                model.setValue(asNumbers);
             });
         },
-
-        addEntry: function(event) {
-            event.preventDefault();
-            var list = this.model.get('value') || [];
-            this.setValueInEditor(list.concat(['-']));
-            this.updateModel();
-        },
-
-        removeEntry: function(event) {
-            event.preventDefault();
-            const select = $(event.currentTarget).siblings()[0];
-            const value = convertToNumber(select.selectize.getValue());
-            this.setValueInEditor(_.without(this.model.get('value'), value));
-            this.updateModel();
-        },
-
-        clear: function() {
-            AbstractEditor.prototype.clear.apply(this, arguments);
-            if (_.isNull(this.model.getValue())) {
-                this.$el.find('.create-setting').removeClass('is-disabled').attr('aria-disabled', false);
-            }
-        }
     });
 
     Metadata.RelativeTime = AbstractEditor.extend({
