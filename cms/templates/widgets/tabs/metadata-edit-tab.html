@@ -8,7 +8,8 @@
     <%static:include path="js/metadata-editor.underscore" />
 </script>
 
-% for template_name in ["metadata-number-entry", "metadata-string-entry", "metadata-option-entry", "metadata-option-public-access", "metadata-list-entry", "metadata-dict-entry", "metadata-file-uploader-entry", "metadata-file-uploader-item"]:
+<!-- @medality_custom -->
+% for template_name in ["metadata-number-entry", "metadata-string-entry", "metadata-option-entry", "metadata-option-public-access", "metadata-list-entry", "metadata-multiselect-entry", "metadata-dict-entry", "metadata-file-uploader-entry", "metadata-file-uploader-item"]:
     <script id="${template_name}" type="text/template">
         <%static:include path="js/${template_name}.underscore" />
     </script>
