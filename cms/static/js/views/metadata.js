@@ -13,20 +13,6 @@ define(
 function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog,
          LicenseModel, LicenseView, TranscriptUtils, VideoList, VideoTranslations, HtmlUtils) {
     'use strict';
-
-    function decodeHtml(html) {
-        var txt = document.createElement("textarea");
-        txt.innerHTML = html;
-        return txt.value;
-    }
-
-    function convertToNumber(val) {
-        var asNumber = Number(val);
-        return isNaN(asNumber) ? val : asNumber;
-    }
-
-    console.log('_Selectize:', _Selectize);
-
     var Metadata = {};
 
     Metadata.Editor = BaseView.extend({
@@ -409,6 +395,12 @@ function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileU
         templateName: 'metadata-multiselect-entry',
 
         setValueInEditor: function(values) {
+            const decodeHtml = (html) =>{
+                var txt = document.createElement("textarea");
+                txt.innerHTML = html;
+                return txt.value;
+            };
+
             const model = this.model;
             const options = this.model.getOptions().map((option) => ({
                     ...option,
@@ -431,7 +423,11 @@ function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileU
             selectize.setValue(values);
             selectize.on('change', function(_values) {
                 _values = _values ?? [];
-                const asNumbers = _values.map((v) => convertToNumber(v))
+                const asNumbers = _values.map((v) => {
+                    var asNumber = Number(val);
+                    return isNaN(asNumber) ? val : asNumber;
+                });
+
                 selectize.setValue(asNumbers);
                 model.setValue(asNumbers);
             });
