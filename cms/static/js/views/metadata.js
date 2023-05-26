@@ -391,7 +391,6 @@ function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileU
 
     Metadata.MultiSelect = AbstractEditor.extend({
 
-        events: {'click .setting-clear': 'clear'},
         templateName: 'metadata-multiselect-entry',
 
         setValueInEditor: function(values) {
@@ -423,7 +422,7 @@ function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileU
             selectize.setValue(values);
             selectize.on('change', function(_values) {
                 _values = _values ?? [];
-                const asNumbers = _values.map((v) => {
+                const asNumbers = _values.map((val) => {
                     var asNumber = Number(val);
                     return isNaN(asNumber) ? val : asNumber;
                 });
