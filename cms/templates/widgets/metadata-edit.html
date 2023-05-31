@@ -10,13 +10,23 @@
   hlskey = hashlib.md5(text_type(module.location).encode('utf-8')).hexdigest()
 %>
 
+<!-- @medality_custom -->
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.15.2/css/selectize.default.min.css"
+  integrity="sha512-pTaEn+6gF1IeWv3W1+7X7eM60TFu/agjgoHmYhAfLEU8Phuf6JKiiE8YmsNC0aCgQv4192s4Vai8YZ6VNM6vyQ=="
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+/>
+
 ## js templates
 % for template_name in ["metadata-editor", "license-selector"]:
     <script id="${template_name}-tpl" type="text/template">
         <%static:include path="js/${template_name}.underscore" />
     </script>
 % endfor
-% for template_name in ["metadata-number-entry", "metadata-string-entry", "metadata-option-entry", "metadata-option-public-access", "metadata-list-entry", "metadata-dict-entry", "metadata-file-uploader-entry", "metadata-file-uploader-item"]:
+<!-- @medality_custom -->
+% for template_name in ["metadata-number-entry", "metadata-string-entry", "metadata-option-entry", "metadata-option-public-access", "metadata-list-entry", "metadata-multiselect-entry", "metadata-dict-entry", "metadata-file-uploader-entry", "metadata-file-uploader-item"]:
     <script id="${template_name}" type="text/template">
         <%static:include path="js/${template_name}.underscore" />
     </script>

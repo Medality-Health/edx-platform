@@ -1,6 +1,6 @@
 define(
     [
-        'backbone',
+        'backbone', '@selectize/selectize', // @medality_custom
         'js/views/baseview', 'underscore', 'js/models/metadata', 'js/views/abstract_editor',
         'js/models/uploads', 'js/views/uploads',
         'js/models/license', 'js/views/license',
@@ -9,7 +9,7 @@ define(
         'js/views/video/translations_editor',
         'edx-ui-toolkit/js/utils/html-utils'
     ],
-function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog,
+function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog, // @medality_custom
          LicenseModel, LicenseView, TranscriptUtils, VideoList, VideoTranslations, HtmlUtils) {
     'use strict';
     var Metadata = {};
@@ -644,6 +644,51 @@ function(Backbone, BaseView, _, MetadataModel, AbstractEditor, FileUpload, Uploa
             this.render();
         }
 
+    });
+
+    // @medality_custom
+    Metadata.MultiSelect = AbstractEditor.extend({
+
+        templateName: 'metadata-multiselect-entry',
+
+        setValueInEditor: function(values) {
+            const decodeHtml = (html) =>{
+                var txt = document.createElement("textarea");
+                txt.innerHTML = html;
+                return txt.value;
+            };
+
+            const model = this.model;
+            const options = this.model.getOptions().map((option) => ({
+                    ...option,
+                    display_name: decodeHtml(option.display_name),
+                })
+            );
+
+            const $select = $(this.$el.find('select')[0]).selectize({
+                plugins: ['clear_button'],
+                persist: false,
+                maxItems: null,
+                valueField: 'value',
+                labelField: 'display_name',
+                searchField: 'display_name',
+                options,
+            });
+
+            const selectize = $select[0].selectize;
+
+            selectize.setValue(values);
+            selectize.on('change', function(_values) {
+                _values = _values ?? [];
+                const asNumbers = _values.map((val) => {
+                    var asNumber = Number(val);
+                    return isNaN(asNumber) ? val : asNumber;
+                });
+
+                selectize.setValue(asNumbers);
+                model.setValue(asNumbers);
+            });
+        },
     });
 
     return Metadata;
