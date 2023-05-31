@@ -10,7 +10,7 @@ from functools import partial
 import yaml
 
 from django.conf import settings
-from edx_django_utils.plugins import pluggable_override # @medality_custom
+from edx_django_utils.plugins import pluggable_override  # @medality_custom
 from lazy import lazy
 from lxml import etree
 from opaque_keys.edx.asides import AsideDefinitionKeyV2, AsideUsageKeyV2
