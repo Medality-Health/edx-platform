@@ -1946,7 +1946,6 @@ class CourseEnrollment(models.Model):
             enrollment_state = cls._get_enrollment_state(user, course_key)
             return enrollment_state.is_active or False
 
-
     @classmethod
     def is_enrolled_by_partial(cls, user, course_id_partial):
         """
