@@ -1503,6 +1503,7 @@ GOOGLE_ANALYTICS_ACCOUNT = None
 GOOGLE_SITE_VERIFICATION_ID = ''
 GOOGLE_ANALYTICS_LINKEDIN = 'GOOGLE_ANALYTICS_LINKEDIN_DUMMY'
 GOOGLE_ANALYTICS_TRACKING_ID = None
+GOOGLE_ANALYTICS_4_ID = None
 
 ######################## BRANCH.IO ###########################
 BRANCH_IO_KEY = ''
@@ -2915,14 +2916,10 @@ YOUTUBE = {
     # URL to get YouTube metadata
     'METADATA_URL': 'https://www.googleapis.com/youtube/v3/videos/',
 
-    # Current youtube api for requesting transcripts.
-    # For example: http://video.google.com/timedtext?lang=en&v=j_jEn79vS3g.
-    'TEXT_API': {
-        'url': 'video.google.com/timedtext',
-        'params': {
-            'lang': 'en',
-            'v': 'set_youtube_id_of_11_symbols_here',
-        },
+    # Web page mechanism for scraping transcript information from youtube video pages
+    'TRANSCRIPTS': {
+        'CAPTION_TRACKS_REGEX': r"captionTracks\"\:\[(?P<caption_tracks>[^\]]+)",
+        'YOUTUBE_URL_BASE': 'https://www.youtube.com/watch?v=',
     },
 
     'IMAGE_API': 'http://img.youtube.com/vi/{youtube_id}/0.jpg',  # /maxresdefault.jpg for 1920*1080
