@@ -738,7 +738,7 @@ class XModuleMixin(XModuleFields, XBlock):
 
         return metadata_fields
 
-    @pluggable_override("OVERRIDE_CREATE_METADATA_EDITOR_INFO") # @medality_custom
+    @pluggable_override("OVERRIDE_CREATE_METADATA_EDITOR_INFO")  # @medality_custom
     def _create_metadata_editor_info(self, field):
         """
         Creates the information needed by the metadata editor for a specific field.
