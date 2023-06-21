@@ -1,0 +1,10 @@
+<!-- @medality_custom -->
+<div class="wrapper-comp-setting metadata-list-enum">
+  <label class="label setting-label" for="<%- uniqueId %>"><%- model.get('display_name')%></label>
+  <div id="<%- uniqueId %>" class="wrapper-list-settings">
+    <select></select>
+  </div>
+</div>
+<div>
+  <span class="tip setting-help"><%= model.get('help') %></span>
+</div>

@@ -25,6 +25,14 @@ function(
             return renderResult;
         },
 
+        getTemplateContext: function() {
+            /* globals course */
+            return _.extend(
+                XBlockOutlineView.prototype.getTemplateContext.call(this),
+                {course: course}
+            );
+        },
+
         shouldExpandChildren: function() {
             return this.expandedLocators.contains(this.model.get('id'));
         },

@@ -385,6 +385,7 @@ djangorestframework==3.12.4
     #   -r requirements/edx/base.in
     #   django-config-models
     #   django-user-tasks
+    #   djangorestframework-expander
     #   drf-jwt
     #   drf-nested-routers
     #   drf-yasg
@@ -400,6 +401,8 @@ djangorestframework==3.12.4
     #   openedx-blockstore
     #   ora2
     #   super-csv
+djangorestframework-expander==0.2.3
+    # via blockstore
 djangorestframework-xml==2.0.0
     # via edx-enterprise
 djfernet==0.8.1
@@ -735,6 +738,7 @@ mysqlclient==2.1.1
 newrelic==8.8.0
     # via
     #   -r requirements/edx/base.in
+    #   blockstore
     #   edx-django-utils
 nltk==3.8.1
     # via
@@ -871,7 +875,6 @@ pylti1p3==2.0.0
     # via -r requirements/edx/base.in
 pymongo==3.13.0
     # via
-    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.in
     #   -r requirements/edx/paver.txt
     #   edx-opaque-keys

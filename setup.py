@@ -25,7 +25,8 @@ XBLOCKS = [
     "library_sourced = xmodule.library_sourced_block:LibrarySourcedBlock",
     "lti = xmodule.lti_block:LTIBlock",
     "poll_question = xmodule.poll_block:PollBlock",
-    "problem = xmodule.capa_block:ProblemBlock",
+    # @medality_custom
+    # "problem = xmodule.capa_module:ProblemBlock",
     "randomize = xmodule.randomize_block:RandomizeBlock",
     "sequential = xmodule.seq_block:SequenceBlock",
     "slides = xmodule.template_block:TranslateCustomTagBlock",
@@ -53,6 +54,7 @@ setup(
     # be reorganized to be a more conventional Python tree.
     packages=[
         "cms",
+        "common",
         "lms",
         "openedx",
         "xmodule",

@@ -10,6 +10,7 @@ from functools import partial
 import yaml
 
 from django.conf import settings
+from edx_django_utils.plugins import pluggable_override  # @medality_custom
 from lazy import lazy
 from lxml import etree
 from opaque_keys.edx.asides import AsideDefinitionKeyV2, AsideUsageKeyV2
@@ -678,6 +679,7 @@ class XModuleMixin(XModuleFields, XBlock):
 
         return metadata_fields
 
+    @pluggable_override("OVERRIDE_CREATE_METADATA_EDITOR_INFO")  # @medality_custom
     def _create_metadata_editor_info(self, field):
         """
         Creates the information needed by the metadata editor for a specific field.
