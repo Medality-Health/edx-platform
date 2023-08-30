@@ -313,8 +313,8 @@ def _handle_successful_authentication_and_login(user, request):
 
     try:
         django_login(request, user)
-        request.session.set_expiry(604800 * 4)
-        log.debug("Setting user session expiry to 4 weeks")
+        # @medality_custom
+        request.session.set_expiry(settings.SESSION_COOKIE_AGE)
 
         # .. event_implemented_name: SESSION_LOGIN_COMPLETED
         SESSION_LOGIN_COMPLETED.send_event(
