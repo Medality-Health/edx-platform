@@ -149,7 +149,7 @@ class LogoutView(TemplateView):
                 logout_uris.append(self._build_logout_url(uri))
 
         # @medality_custom
-        if getattr(settings, "MEDALITY_LOGOUT_URIS"):
+        if getattr(settings, "MEDALITY_LOGOUT_URIS", None):
             logout_uris.extend(settings.MEDALITY_LOGOUT_URIS)
 
         target = self.target
