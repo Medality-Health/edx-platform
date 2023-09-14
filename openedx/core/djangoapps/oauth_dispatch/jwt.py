@@ -7,6 +7,7 @@ from time import time
 
 from django.conf import settings
 from edx_django_utils.monitoring import set_custom_attribute
+from edx_django_utils.plugins import pluggable_override  # @medality_custom
 from edx_rbac.utils import create_role_auth_claim_for_user
 from jwkest import jwk
 from jwkest.jws import JWS
@@ -230,6 +231,7 @@ def _attach_email_claim(payload, user):
     payload['email'] = user.email
 
 
+@pluggable_override("OVERRIDE_ATTACH_PROFILE_CLAIM")  # @medality_custom
 def _attach_profile_claim(payload, user):
     """Add the profile claim details to the JWT payload."""
     try:
