@@ -858,7 +858,7 @@ def _update_and_import_module(
     fields = _update_module_references(module, source_course_id, dest_course_id)
     asides = module.get_asides() if isinstance(module, XModuleMixin) else None
 
-    if module.location.block_type == 'library_content':
+    if module.location.block_type == 'library_content' or module.location.block_type == 'select_from_library':
         with store.branch_setting(branch_setting=ModuleStoreEnum.Branch.published_only):
             lib_content_block_already_published = store.has_item(module.location)
 
@@ -875,7 +875,7 @@ def _update_and_import_module(
     # Special case handling for library content blocks. The fact that this is
     # in Modulestore code is _bad_ and breaks abstraction barriers, but is too
     # much work to factor out at this point.
-    if block.location.block_type == 'library_content':
+    if block.location.block_type == 'library_content' or block.location.block_type == 'select_from_library':
         # If library exists, update source_library_version and children
         # according to this existing library and library content block.
         if block.source_library_id and store.get_library(block.source_library_key):
