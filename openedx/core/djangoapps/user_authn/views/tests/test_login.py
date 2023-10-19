@@ -1164,7 +1164,8 @@ class LoginSessionViewTest(ApiTestCase, OpenEdxEventsTestMixin):
 
         # Verify that the session expiration was set correctly
         cookie = self.client.cookies[settings.SESSION_COOKIE_NAME]
-        expected_expiry = datetime.datetime.utcnow() + datetime.timedelta(weeks=4)
+        # @medality_custom
+        expected_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=settings.SESSION_COOKIE_AGE)
         assert expected_expiry.strftime('%d %b %Y') in cookie.get('expires').replace('-', ' ')
 
     def test_invalid_credentials(self):
