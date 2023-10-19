@@ -135,7 +135,7 @@ class LibraryToolsService:
         """
         return self.store.check_supports(block.location.course_key, 'copy_from_template')
 
-    def update_children(self, dest_block, user_perms=None, version=None):
+    def update_children(self, dest_block, user_perms=None, version=None, filter_fn=None):
         """
         This method is to be used when the library that a LibraryContentBlock
         references has been updated. It will re-fetch all matching blocks from
@@ -169,6 +169,9 @@ class LibraryToolsService:
             source_blocks.extend(self._problem_type_filter(library, dest_block.capa_type))
         else:
             source_blocks.extend(library.children)
+
+        if filter_fn:
+            source_blocks = filter_fn(source_blocks)
 
         with self.store.bulk_operations(dest_block.location.course_key):
             dest_block.source_library_version = str(library.location.library_key.version_guid)
