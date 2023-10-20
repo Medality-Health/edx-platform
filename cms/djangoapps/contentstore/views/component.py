@@ -204,7 +204,7 @@ def container_handler(request, usage_key_string):  # lint-amnesty, pylint: disab
 
             return render_to_response('container.html', {
                 'language_code': request.LANGUAGE_CODE,
-                'context_name': courselike,  # Needed only for display of menus at top of page.
+                context_name: courselike,  # Needed only for display of menus at top of page.
                 'library': is_library,
                 'action': action,
                 'xblock': xblock,

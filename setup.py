@@ -26,7 +26,7 @@ XBLOCKS = [
     "lti = xmodule.lti_block:LTIBlock",
     "poll_question = xmodule.poll_block:PollBlock",
     # @medality_custom
-    # "problem = xmodule.capa_module:ProblemBlock",
+    # "problem = xmodule.capa_block:ProblemBlock",
     "randomize = xmodule.randomize_block:RandomizeBlock",
     "sequential = xmodule.seq_block:SequenceBlock",
     "slides = xmodule.template_block:TranslateCustomTagBlock",

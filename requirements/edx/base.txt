@@ -177,7 +177,7 @@ defusedxml==0.7.1
     #   social-auth-core
 deprecated==1.2.13
     # via jwcrypto
-django==3.2.19
+django==3.2.21
     # via
     #   -c requirements/edx/../common_constraints.txt
     #   -r requirements/edx/base.in
@@ -831,7 +831,7 @@ psutil==5.9.5
     # via
     #   -r requirements/edx/paver.txt
     #   edx-django-utils
-py2neo==2021.2.3
+py2neo @ https://github.com/overhangio/py2neo/releases/download/2021.2.3/py2neo-2021.2.3.tar.gz
     # via
     #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.in
