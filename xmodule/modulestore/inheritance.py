@@ -287,12 +287,12 @@ def compute_inherited_metadata(descriptor):
                 # inherited_settings values are json repr
                 parent_metadata[field.name] = field.read_json(descriptor)
 
-        get_children_kwargs = {}
+        get_children_kwargs = {}# @medality_custom start
 
         if descriptor.category == "select_from_library":
             get_children_kwargs["context"] = "course_import"
 
-        for child in descriptor.get_children(**get_children_kwargs):
+        for child in descriptor.get_children(**get_children_kwargs):# @medality_custom end
             inherit_metadata(child, parent_metadata)
             compute_inherited_metadata(child)
 

@@ -489,12 +489,12 @@ class ImportManager:
             Import top down just so import code can make assumptions about parents always being available
             """
             if subtree.has_children:
-                get_children_kwargs = {}
+                get_children_kwargs = {} # @medality_custom start
 
                 if subtree.category == "select_from_library":
                     get_children_kwargs["context"] = "course_import"
 
-                for child in subtree.get_children(**get_children_kwargs):
+                for child in subtree.get_children(**get_children_kwargs):  # @medality_custom end
                     try:
                         all_locs.remove(child.location)
                     except KeyError:
