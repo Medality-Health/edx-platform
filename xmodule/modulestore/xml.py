@@ -204,12 +204,12 @@ class ImportSystem(XMLParsingSystem, MakoDescriptorSystem):  # lint-amnesty, pyl
             xmlstore.modules[course_id][descriptor.scope_ids.usage_id] = descriptor
 
             if descriptor.has_children:
-                get_children_kwargs = {} # @medality_custom start
+                get_children_kwargs = {}  # @medality_custom start
 
                 if descriptor.category == "select_from_library":
                     get_children_kwargs["context"] = "course_import"
 
-                for child in descriptor.get_children(**get_children_kwargs): # @medality_custom end
+                for child in descriptor.get_children(**get_children_kwargs):  # @medality_custom end
                     # parent is alphabetically least
                     if child.parent is None or child.parent > descriptor.scope_ids.usage_id:
                         child.parent = descriptor.location
