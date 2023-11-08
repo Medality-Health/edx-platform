@@ -89,6 +89,9 @@ CREATE_IF_NOT_FOUND = ['course_info']
 NEVER = lambda x: False
 ALWAYS = lambda x: True
 
+@pluggable_override("PROPAGATE_LIBRARY_UPDATES")
+def _propagate_library_updates(library_key_string, user_id):
+    pass
 
 def _filter_entrance_exam_grader(graders):
     """
@@ -692,6 +695,9 @@ def _save_xblock(user, xblock, data=None, children_strings=None, metadata=None, 
             modulestore().publish(xblock.location, user.id)
 
         # Note that children aren't being returned until we have a use case.
+
+        _propagate_library_updates(xblock.location.course_key,user.id)
+
         return JsonResponse(result, encoder=EdxJSONEncoder)
 
 
