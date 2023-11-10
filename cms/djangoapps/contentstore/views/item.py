@@ -89,9 +89,6 @@ CREATE_IF_NOT_FOUND = ['course_info']
 NEVER = lambda x: False
 ALWAYS = lambda x: True
 
-@pluggable_override("OVERRIDE_PROPAGATE_LIBRARY_UPDATES")
-def _propagate_library_updates(library_key_string, user_id):
-    pass
 
 def _filter_entrance_exam_grader(graders):
     """
@@ -530,7 +527,7 @@ def _update_with_callback(xblock, user, old_metadata=None, old_content=None):
     # Update after the callback so any changes made in the callback will get persisted.
     return modulestore().update_item(xblock, user.id)
 
-
+@pluggable_override("OVERRIDE_SAVE_XBLOCK")
 def _save_xblock(user, xblock, data=None, children_strings=None, metadata=None, nullout=None,  # lint-amnesty, pylint: disable=too-many-statements
                  grader_type=None, is_prereq=None, prereq_usage_key=None, prereq_min_score=None,
                  prereq_min_completion=None, publish=None, fields=None):
@@ -695,9 +692,6 @@ def _save_xblock(user, xblock, data=None, children_strings=None, metadata=None, 
             modulestore().publish(xblock.location, user.id)
 
         # Note that children aren't being returned until we have a use case.
-
-        _propagate_library_updates(xblock.location.course_key, user.id)
-
         return JsonResponse(result, encoder=EdxJSONEncoder)
 
 
