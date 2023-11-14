@@ -14,6 +14,7 @@ from openedx.core.djangolib.js_utils import (
 <%def name="online_help_token()"><% return "home" %></%def>
 <%block name="title">${_("{studio_name} Home").format(studio_name=settings.STUDIO_SHORT_NAME)}</%block>
 <%block name="bodyclass">is-signedin index view-dashboard</%block>
+<%bulk_edit_url = reverse('medality_openedx_plugin:bulk_edit_handler')%>
 
 <%block name="requirejs">
   require(["js/factories/index"], function (IndexFactory) {
@@ -41,6 +42,7 @@ from openedx.core.djangolib.js_utils import (
             <a href="#" class="button new-button new-library-button"><span class="icon fa fa-plus icon-inline" aria-hidden="true"></span>
             ${_("New Library")}</a>
           % endif
+          <a href=bulk_edit_url class="button new-button"> <span class="icon fa fa-plus icon-inline" aria-hidden="true"></span> ${_("Bulk Edit")}</a>
         </li>
       </ul>
     </nav>
