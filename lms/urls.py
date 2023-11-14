@@ -9,7 +9,7 @@ from django.contrib import admin
 from django.contrib.admin import autodiscover as django_autodiscover
 from django.urls import include, path, re_path
 from django.utils.translation import gettext_lazy as _
-from django.views.generic.base import RedirectView
+from django.views.generic.base import RedirectView, TemplateView
 from edx_api_doc_tools import make_docs_urls
 from edx_django_utils.plugins import get_plugin_url_patterns
 
@@ -1029,4 +1029,8 @@ urlpatterns += [
 # MFE API urls
 urlpatterns += [
     path('api/mfe_config/v1', include(('lms.djangoapps.mfe_config_api.urls', 'lms.djangoapps.mfe_config_api'), namespace='mfe_config_api'))
+]
+
+urlpatterns += [
+    path("robots.txt", TemplateView.as_view(template_name="robots.txt", content_type="text/plain")),
 ]
