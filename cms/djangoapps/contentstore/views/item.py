@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
@@ -117,6 +118,7 @@ def _is_library_component_limit_reached(usage_key):
 @require_http_methods(("DELETE", "GET", "PUT", "POST", "PATCH"))
 @login_required
 @expect_json
+@transaction.non_atomic_requests
 def xblock_handler(request, usage_key_string=None):
     """
     The restful handler for xblock requests.
