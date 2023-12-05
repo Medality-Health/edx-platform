@@ -2,6 +2,10 @@
 <%!
 from django.utils.translation import gettext as _
 from django.urls import reverse
+# @medality_custom
+from openedx.core.djangolib.markup import HTML
+# @medality_custom
+from webpack_loader.templatetags.webpack_loader import render_bundle
 
 from openedx.core.djangolib.markup import HTML, Text
 from openedx.core.djangolib.js_utils import (
@@ -51,7 +55,7 @@ from openedx.core.djangolib.js_utils import (
 <div class="wrapper-content wrapper">
   % if user.is_active:
   <section class="content">
-    <article class="content-primary" role="main">
+    <article class="content-primary" role="main" style="width: 100%; margin-right: 0;">
 
       % if course_creator_status=='granted':
       <div class="wrapper-create-element wrapper-create-course">
@@ -321,15 +325,6 @@ from openedx.core.djangolib.js_utils import (
             <a href="#">${_("Courses")}</a>
           % endif
        </li>
-        % if archived_courses:
-        <li class="archived-courses-tab">
-            % if split_studio_home and active_tab == 'libraries':
-                <a href="${reverse('home') + '#archived-courses-tab' } " >${_("Archived Courses")}</a>
-            % else:
-                <a href="#" >${_("Archived Courses")}</a>
-            % endif
-        </li>
-        % endif
 
         % if libraries_enabled:
             % if redirect_to_library_authoring_mfe:
@@ -349,16 +344,10 @@ from openedx.core.djangolib.js_utils import (
 
       %if len(courses) > 0 or optimization_enabled:
       <div class="courses courses-tab react-course-listing ${ 'active' if active_tab == 'courses' else ''}">
-        ${static.renderReact(
-          component="CourseOrLibraryListing",
-          id="react-course-listing",
-          props={
-            'items': sorted(courses, key=lambda s: s['display_name'].lower() if s['display_name'] is not None else ''),
-            'linkClass': 'course-link',
-            'idBase': 'course',
-            'allowReruns': allow_course_reruns and rerun_creator_status and course_creator_status=='granted'
-          }
-        )}
+        <!-- @medality_custom: start -->
+        <div id="medality-course-list-root"></div>
+        ${HTML(render_bundle('cms_course_list', config='medality'))}
+        <!-- @medality_custom: end -->
       </div>
 
       %else:
@@ -537,50 +526,7 @@ from openedx.core.djangolib.js_utils import (
       %endif
 
     </article>
-    <aside class="content-supplementary" role="complementary">
-      <div class="bit">
-        <h3 class="title title-3">${_('New to {studio_name}?').format(studio_name=settings.STUDIO_NAME)}</h3>
-        <p>${_('Click Help in the upper-right corner to get more information about the {studio_name} page you are viewing. You can also use the links at the bottom of the page to access our continually updated documentation and other {studio_name} resources.').format(studio_name=settings.STUDIO_SHORT_NAME)}</p>
-
-        <ol class="list-actions">
-          <li class="action-item">
-
-            <a href="${get_online_help_info(online_help_token())['doc_url']}" rel="noopener" target="_blank">${_("Getting Started with {studio_name}").format(studio_name=settings.STUDIO_NAME)}</a>
-          </li>
-        </ol>
-      </div>
-
-      % if course_creator_status=='disallowed_for_this_site' and settings.FEATURES.get('STUDIO_REQUEST_EMAIL',''):
-      <div class="bit">
-        <h3 class="title title-3">${_("Can I create courses in {studio_name}?").format(studio_name=settings.STUDIO_NAME)}</h3>
-        <p>${Text(_("In order to create courses in {studio_name}, you must {link_start}contact {platform_name} staff to help you create a course{link_end}.")).format(
-            studio_name=settings.STUDIO_NAME,
-            platform_name=settings.PLATFORM_NAME,
-            link_start=HTML('<a href="mailto:{email}">').format(email=settings.FEATURES.get('STUDIO_REQUEST_EMAIL','')),
-            link_end=HTML("</a>"),
-          )}</p>
-      </div>
-      % endif
-
-      % if course_creator_status == "unrequested":
-      <div class="bit">
-        <h3 class="title title-3">${_("Can I create courses in {studio_name}?").format(studio_name=settings.STUDIO_NAME)}</h3>
-        <p>${_('In order to create courses in {studio_name}, you must have course creator privileges to create your own course.').format(studio_name=settings.STUDIO_NAME)}</p>
-      </div>
-
-      % elif course_creator_status == "denied":
-      <div class="bit">
-        <h3 class="title title-3">${_("Can I create courses in {studio_name}?").format(studio_name=settings.STUDIO_NAME)}</h3>
-        <p>${Text(_("Your request to author courses in {studio_name} has been denied. Please {link_start}contact {platform_name} Staff with further questions{link_end}.")).format(
-            studio_name=settings.STUDIO_NAME,
-            platform_name=settings.PLATFORM_NAME,
-            link_start=HTML('<a href="mailto:{email}">').format(email=settings.TECH_SUPPORT_EMAIL),
-            link_end=HTML('</a>'),
-          )}</p>
-      </div>
-
-      % endif
-    </aside>
+    
   </section>
 
 
