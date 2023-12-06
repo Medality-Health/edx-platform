@@ -484,16 +484,10 @@ from openedx.core.djangolib.js_utils import (
 
       %if len(libraries) > 0 or optimization_enabled:
       <div class="libraries react-library-listing libraries-tab ${ 'active' if active_tab == 'libraries' else ''}">
-        ${static.renderReact(
-          component="CourseOrLibraryListing",
-          id="react-library-listing",
-          props={
-            'items': sorted(libraries, key=lambda s: s['display_name'].lower() if s['display_name'] is not None else ''),
-            'linkClass': 'library-link',
-            'idBase': 'library',
-            'allowReruns': allow_course_reruns and rerun_creator_status and course_creator_status=='granted'
-          }
-        )}
+        <!-- @medality_custom: start -->
+        <div id="medality-library-list-root"></div>
+        ${HTML(render_bundle('cms_library_list', config='medality'))}
+        <!-- @medality_custom: end -->
       </div>
 
       %else:
