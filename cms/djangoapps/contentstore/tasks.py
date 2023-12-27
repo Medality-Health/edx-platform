@@ -226,7 +226,7 @@ def update_library_index(library_id, triggered_time_isoformat):
     """ Updates course search index. """
     try:
         library_key = CourseKey.from_string(library_id)
-        LibrarySearchIndexer.index(modulestore(), library_key, triggered_at=(_parse_time(triggered_time_isoformat)))
+        #LibrarySearchIndexer.index(modulestore(), library_key, triggered_at=(_parse_time(triggered_time_isoformat)))
 
     except SearchIndexingError as exc:
         LOGGER.error('Search indexing error for library %s - %s', library_id, str(exc))
