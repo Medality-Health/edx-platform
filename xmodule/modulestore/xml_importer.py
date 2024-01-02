@@ -865,7 +865,7 @@ def _update_and_import_module(
 
     lib_content_block_already_published = False  # @medality_custom
 
-    if module.location.block_type == 'library_content' or module.location.block_type == 'library_content':  # @medality_custom
+    if module.location.block_type in {'library_content', 'select_from_library'}:  # @medality_custom
         with store.branch_setting(branch_setting=ModuleStoreEnum.Branch.published_only):
             lib_content_block_already_published = store.has_item(module.location)
 
@@ -882,7 +882,7 @@ def _update_and_import_module(
     # Special case handling for library content blocks. The fact that this is
     # in Modulestore code is _bad_ and breaks abstraction barriers, but is too
     # much work to factor out at this point.
-    if block.location.block_type == 'library_content' or block.location.block_type == 'select_from_library':  # @medality_custom
+    if block.location.block_type in {'library_content', 'select_from_library'}:  # @medality_custom
         # If library exists, update source_library_version and children
         # according to this existing library and library content block.
         if block.source_library_id and store.get_library(block.source_library_key):
