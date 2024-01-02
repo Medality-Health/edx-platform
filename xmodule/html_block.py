@@ -253,7 +253,7 @@ class HtmlBlockMixin(  # lint-amnesty, pylint: disable=abstract-method
             # 'filename' in html pointers is a relative path
             # (not same as 'html/blah.html' when the pointer is in a directory itself)
             pointer_path = "{category}/{url_path}".format(
-                category='html',
+                category=xml_object.tag, #  @medality_custom
                 url_path=name_to_pathname(location.block_id)
             )
             base = path(pointer_path).dirname()

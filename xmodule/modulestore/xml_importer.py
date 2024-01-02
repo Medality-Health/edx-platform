@@ -489,7 +489,12 @@ class ImportManager:
             Import top down just so import code can make assumptions about parents always being available
             """
             if subtree.has_children:
-                for child in subtree.get_children():
+                get_children_kwargs = {}  # @medality_custom start
+
+                if subtree.category == "select_from_library":
+                    get_children_kwargs["context"] = "course_import"
+
+                for child in subtree.get_children(**get_children_kwargs):  # @medality_custom end
                     try:
                         all_locs.remove(child.location)
                     except KeyError:
@@ -858,7 +863,9 @@ def _update_and_import_block(
     fields = _update_block_references(block, source_course_id, dest_course_id)
     asides = block.get_asides() if isinstance(block, XModuleMixin) else None
 
-    if block.location.block_type == 'library_content':
+    lib_content_block_already_published = False  # @medality_custom
+
+    if block.location.block_type == 'library_content':  # @medality_custom
         with store.branch_setting(branch_setting=ModuleStoreEnum.Branch.published_only):
             lib_content_block_already_published = store.has_item(block.location)
 
@@ -875,7 +882,7 @@ def _update_and_import_block(
     # Special case handling for library content blocks. The fact that this is
     # in Modulestore code is _bad_ and breaks abstraction barriers, but is too
     # much work to factor out at this point.
-    if block.location.block_type == 'library_content':
+    if block.location.block_type == 'library_content' or block.location.block_type == 'select_from_library':  # @medality_custom
         # If library exists, update source_library_version and children
         # according to this existing library and library content block.
         if block.source_library_id and store.get_library(block.source_library_key):
