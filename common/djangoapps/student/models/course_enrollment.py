@@ -847,6 +847,7 @@ class CourseEnrollment(models.Model):
 
         `course_id` is our usual course_id string (e.g. "edX/Test101/2013_Fall)
         """
+        # @medality_custom: start
         try:
             UserCourseGroupAccess = apps.get_model('medality_openedx_plugin', 'UserCourseGroupAccess')
             return UserCourseGroupAccess.user_has_course_access(user, course_key)
@@ -854,6 +855,7 @@ class CourseEnrollment(models.Model):
             # original implementation to keep tests passing
             enrollment_state = cls._get_enrollment_state(user, course_key)
             return enrollment_state.is_active or False
+        # @medality_custom: end
 
     @classmethod
     def is_enrolled_by_partial(cls, user, course_id_partial):
