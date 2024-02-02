@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta  # lint-amnesty, pylint: disable=
 from urllib.parse import urljoin
 
 from config_models.models import ConfigurationModel
+from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.cache import cache
@@ -846,8 +847,15 @@ class CourseEnrollment(models.Model):
 
         `course_id` is our usual course_id string (e.g. "edX/Test101/2013_Fall)
         """
-        enrollment_state = cls._get_enrollment_state(user, course_key)
-        return enrollment_state.is_active or False
+        # @medality_custom: start
+        try:
+            UserCourseGroupAccess = apps.get_model('medality_openedx_plugin', 'UserCourseGroupAccess')
+            return UserCourseGroupAccess.user_has_course_access(user, course_key)
+        except LookupError:
+            # original implementation to keep tests passing
+            enrollment_state = cls._get_enrollment_state(user, course_key)
+            return enrollment_state.is_active or False
+        # @medality_custom: end
 
     @classmethod
     def is_enrolled_by_partial(cls, user, course_id_partial):
