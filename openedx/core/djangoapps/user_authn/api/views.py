@@ -15,6 +15,7 @@ from common.djangoapps.student.helpers import get_next_url_for_login_page
 from common.djangoapps.student.views import compose_and_send_activation_email
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.djangoapps.user_authn.api.helper import RegistrationFieldsContext
+from openedx.core.djangoapps.user_authn.serializers import MFEContextSerializer
 from openedx.core.djangoapps.user_authn.views.utils import get_mfe_context
 
 
@@ -55,26 +56,29 @@ class MFEContextView(APIView):
         context = {
             'context_data': get_mfe_context(request, redirect_to, third_party_auth_hint),
             'registration_fields': {},
-            'optional_fields': {},
+            'optional_fields': {
+                'extended_profile': []
+            },
         }
 
-        if settings.ENABLE_DYNAMIC_REGISTRATION_FIELDS:
-            if is_register_page:
-                registration_fields = RegistrationFieldsContext().get_fields()
-                context['registration_fields'].update({
-                    'fields': registration_fields,
+        if settings.ENABLE_DYNAMIC_REGISTRATION_FIELDS and is_register_page:
+            registration_fields = RegistrationFieldsContext().get_fields()
+            context['registration_fields'].update({
+                'fields': registration_fields,
+            })
+
+            optional_fields = RegistrationFieldsContext('optional').get_fields()
+            if optional_fields:
+                context['optional_fields'].update({
+                    'fields': optional_fields,
                     'extended_profile': configuration_helpers.get_value('extended_profile_fields', []),
                 })
-                optional_fields = RegistrationFieldsContext('optional').get_fields()
-                if optional_fields:
-                    context['optional_fields'].update({
-                        'fields': optional_fields,
-                        'extended_profile': configuration_helpers.get_value('extended_profile_fields', []),
-                    })
 
         return Response(
             status=status.HTTP_200_OK,
-            data=context
+            data=MFEContextSerializer(
+                context
+            ).data
         )
 
 

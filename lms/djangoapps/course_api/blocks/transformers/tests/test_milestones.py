@@ -9,10 +9,12 @@ import ddt
 from milestones.tests.utils import MilestonesTestCaseMixin
 
 from common.djangoapps.student.tests.factories import CourseEnrollmentFactory
+from edx_toggles.toggles.testutils import override_waffle_flag
 from lms.djangoapps.course_blocks.api import get_course_blocks
 from lms.djangoapps.course_blocks.transformers.tests.helpers import CourseStructureTestCase
 from lms.djangoapps.gating import api as lms_gating_api
 from openedx.core.djangoapps.content.block_structure.transformers import BlockStructureTransformers
+from openedx.core.djangoapps.course_apps.toggles import EXAMS_IDA
 from openedx.core.lib.gating import api as gating_api
 
 from ..milestones import MilestonesAndSpecialExamsTransformer
@@ -164,7 +166,7 @@ class MilestonesTransformerTestCase(CourseStructureTestCase, MilestonesTestCaseM
         self.course.enable_subsection_gating = True
         self.setup_gated_section(self.blocks[gated_block_ref], self.blocks[gating_block_ref])
 
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(5):
             self.get_blocks_and_check_against_expected(self.user, expected_blocks_before_completion)
 
         # clear the request cache to simulate a new request
@@ -177,7 +179,7 @@ class MilestonesTransformerTestCase(CourseStructureTestCase, MilestonesTestCaseM
             self.user,
         )
 
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(6):
             self.get_blocks_and_check_against_expected(self.user, self.ALL_BLOCKS_EXCEPT_SPECIAL)
 
     def test_staff_access(self):
@@ -223,3 +225,31 @@ class MilestonesTransformerTestCase(CourseStructureTestCase, MilestonesTestCaseM
             self.transformers,
         )
         assert set(block_structure.get_block_keys()) == set(self.get_block_key_set(self.blocks, *expected_blocks))
+
+    @override_waffle_flag(EXAMS_IDA, active=False)
+    @patch('lms.djangoapps.course_api.blocks.transformers.milestones.get_attempt_status_summary')
+    def test_exams_ida_flag_off(self, mock_get_attempt_status_summary):
+        self.transformers = BlockStructureTransformers([self.TRANSFORMER_CLASS_TO_TEST(True)])
+        self.course.enable_subsection_gating = True
+        self.setup_gated_section(self.blocks['H'], self.blocks['A'])
+        expected_blocks = (
+            'course', 'A', 'B', 'C', 'ProctoredExam', 'D', 'E', 'PracticeExam', 'F', 'G', 'TimedExam', 'J', 'K', 'H',
+            'I')  # lint-amnesty, pylint: disable=line-too-long
+        self.get_blocks_and_check_against_expected(self.user, expected_blocks)
+
+        # Ensure that call is made to get_attempt_status_summary
+        assert mock_get_attempt_status_summary.call_count > 0
+
+    @override_waffle_flag(EXAMS_IDA, active=True)
+    @patch('lms.djangoapps.course_api.blocks.transformers.milestones.get_attempt_status_summary')
+    def test_exams_ida_flag_on(self, mock_get_attempt_status_summary):
+        self.transformers = BlockStructureTransformers([self.TRANSFORMER_CLASS_TO_TEST(True)])
+        self.course.enable_subsection_gating = True
+        self.setup_gated_section(self.blocks['H'], self.blocks['A'])
+        expected_blocks = (
+            'course', 'A', 'B', 'C', 'ProctoredExam', 'D', 'E', 'PracticeExam', 'F', 'G', 'TimedExam', 'J', 'K', 'H',
+            'I')  # lint-amnesty, pylint: disable=line-too-long
+        self.get_blocks_and_check_against_expected(self.user, expected_blocks)
+
+        # Ensure that no calls are made to get_attempt_status_summary
+        assert mock_get_attempt_status_summary.call_count == 0

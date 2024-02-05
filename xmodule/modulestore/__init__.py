@@ -784,7 +784,7 @@ class ModuleStoreRead(ModuleStoreAssetBase, metaclass=ABCMeta):
         usage_key: A :class:`.UsageKey` subclass instance
 
         depth (int): An argument that some module stores may use to prefetch
-            descendents of the queried modules for more efficient results later
+            descendents of the queried blocks for more efficient results later
             in the request. The depth is counted in the number of calls to
             get_children() to cache. None indicates to cache all descendents
         """
@@ -1271,7 +1271,7 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
         result = defaultdict(dict)
         if fields is None:
             return result
-        classes = XBlock.load_class(category, select=prefer_xmodules)
+        classes = XBlock.load_class(category)
         cls = self.mixologist.mix(classes)
         for field_name, value in fields.items():
             field = getattr(cls, field_name)
@@ -1283,7 +1283,7 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
         Creates any necessary other things for the course as a side effect and doesn't return
         anything useful. The real subclass should call this before it returns the course.
         """
-        # clone a default 'about' overview module as well
+        # clone a default 'about' overview block as well
         about_location = self.make_course_key(org, course, run).make_usage_key('about', 'overview')
 
         about_descriptor = XBlock.load_class('about')
@@ -1393,12 +1393,3 @@ def only_xmodules(identifier, entry_points):
     from_xmodule = [entry_point for entry_point in entry_points if entry_point.dist.key == 'xmodule']
 
     return default_select(identifier, from_xmodule)
-
-
-def prefer_xmodules(identifier, entry_points):
-    """Prefer entry_points from the xmodule package"""
-    from_xmodule = [entry_point for entry_point in entry_points if entry_point.dist.key == 'xmodule']
-    if from_xmodule:
-        return default_select(identifier, from_xmodule)
-    else:
-        return default_select(identifier, entry_points)

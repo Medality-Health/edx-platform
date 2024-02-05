@@ -28,6 +28,12 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from common.djangoapps.student.roles import (
+    CourseInstructorRole,
+    CourseStaffRole,
+)
+
+from lms.djangoapps.course_api.blocks.api import get_blocks
 from lms.djangoapps.course_blocks.api import get_course_blocks
 from lms.djangoapps.courseware.courses import get_course_with_access
 from lms.djangoapps.courseware.exceptions import CourseAccessRedirect
@@ -69,7 +75,7 @@ from openedx.core.djangoapps.django_comment_common.signals import (
 )
 from openedx.core.djangoapps.user_api.accounts.api import get_account_settings
 from openedx.core.lib.exceptions import CourseNotFoundError, DiscussionNotFoundError, PageNotFoundError
-from xmodule.course_module import CourseBlock
+from xmodule.course_block import CourseBlock
 from xmodule.modulestore.django import modulestore
 from xmodule.tabs import CourseTabList
 
@@ -111,12 +117,15 @@ from .serializers import (
     get_context
 )
 from .utils import (
+    AttributeDict,
     add_stats_for_users_with_no_discussion_content,
+    create_blocks_params,
     discussion_open_for_user,
     get_usernames_for_course,
     get_usernames_from_search_string,
     set_attribute
 )
+
 
 User = get_user_model()
 
@@ -340,6 +349,8 @@ def get_course(request, course_key):
         }),
         "is_group_ta": bool(user_roles & {FORUM_ROLE_GROUP_MODERATOR}),
         "is_user_admin": request.user.is_staff,
+        "is_course_staff": CourseStaffRole(course_key).has_user(request.user),
+        "is_course_admin": CourseInstructorRole(course_key).has_user(request.user),
         "provider": course_config.provider_type,
         "enable_in_context": course_config.enable_in_context,
         "group_at_subsection": course_config.plugin_configuration.get("group_at_subsection", False),
@@ -520,6 +531,113 @@ def get_course_topics(request: Request, course_key: CourseKey, topic_ids: Option
                 "Discussion not found for '{}'.".format(", ".join(str(id) for id in not_found_topic_ids))
             )
 
+    return {
+        "courseware_topics": courseware_topics,
+        "non_courseware_topics": non_courseware_topics,
+    }
+
+
+def get_v2_non_courseware_topics_as_v1(request, course_key, topics):
+    """
+    Takes v2 topics list and returns v1 list of non courseware topics
+    """
+    non_courseware_topics = []
+    for topic in topics:
+        if topic.get('usage_key', '') is None:
+            for key in ['usage_key', 'enabled_in_context']:
+                topic.pop(key)
+            topic.update({
+                'children': [],
+                'thread_list_url': get_thread_list_url(
+                    request,
+                    course_key,
+                    topic.get('id'),
+                )
+            })
+            non_courseware_topics.append(topic)
+    return non_courseware_topics
+
+
+def get_v2_courseware_topics_as_v1(request, course_key, sequentials, topics):
+    """
+    Returns v2 courseware topics list as v1 structure
+    """
+    courseware_topics = []
+    for sequential in sequentials:
+        children = []
+        for child in sequential.get('children', []):
+            for topic in topics:
+                if child == topic.get('usage_key'):
+                    topic.update({
+                        'children': [],
+                        'thread_list_url': get_thread_list_url(
+                            request,
+                            course_key,
+                            [topic.get('id')],
+                        )
+                    })
+                    topic.pop('enabled_in_context')
+                    children.append(AttributeDict(topic))
+
+        discussion_topic = DiscussionTopic(
+            None,
+            sequential.get('display_name'),
+            get_thread_list_url(
+                request,
+                course_key,
+                [child.id for child in children],
+            ),
+            children,
+            None,
+        )
+        courseware_topics.append(DiscussionTopicSerializer(discussion_topic).data)
+    courseware_topics = [
+        courseware_topic
+        for courseware_topic in courseware_topics
+        if courseware_topic.get('children', [])
+    ]
+    return courseware_topics
+
+
+def get_v2_course_topics_as_v1(
+    request: Request,
+    course_key: CourseKey,
+    topic_ids: Optional[Iterable[str]] = None,
+):
+    """
+    Returns v2 topics in v1 structure
+    """
+    course_usage_key = modulestore().make_course_usage_key(course_key)
+    blocks_params = create_blocks_params(course_usage_key, request.user)
+    blocks = get_blocks(
+        request,
+        blocks_params['usage_key'],
+        blocks_params['user'],
+        blocks_params['depth'],
+        blocks_params['nav_depth'],
+        blocks_params['requested_fields'],
+        blocks_params['block_counts'],
+        blocks_params['student_view_data'],
+        blocks_params['return_type'],
+        blocks_params['block_types_filter'],
+        hide_access_denials=False,
+    )['blocks']
+
+    sequentials = [value for _, value in blocks.items()
+                   if value.get('type') == "sequential"]
+
+    topics = get_course_topics_v2(course_key, request.user, topic_ids)
+    non_courseware_topics = get_v2_non_courseware_topics_as_v1(
+        request,
+        course_key,
+        topics,
+    )
+    courseware_topics = get_v2_courseware_topics_as_v1(
+        request,
+        course_key,
+        sequentials,
+        topics,
+    )
     return {
         "courseware_topics": courseware_topics,
         "non_courseware_topics": non_courseware_topics,
@@ -1072,6 +1190,8 @@ def get_comment_list(request, thread_id, endorsed, page, page_size, flagged=Fals
         discussion.rest_api.views.CommentViewSet for more detail.
     """
     response_skip = page_size * (page - 1)
+    reverse_order = request.GET.get('reverse_order', False)
+    from_mfe_sidebar = request.GET.get("enable_in_context_sidebar", False)
     cc_thread, context = _get_thread_and_context(
         request,
         thread_id,
@@ -1082,6 +1202,7 @@ def get_comment_list(request, thread_id, endorsed, page, page_size, flagged=Fals
             "flagged_comments": flagged,
             "response_skip": response_skip,
             "response_limit": page_size,
+            "reverse_order": reverse_order,
         }
     )
 
@@ -1117,7 +1238,7 @@ def get_comment_list(request, thread_id, endorsed, page, page_size, flagged=Fals
     results = _serialize_discussion_entities(request, context, responses, requested_fields, DiscussionEntity.comment)
 
     paginator = DiscussionAPIPagination(request, page, num_pages, resp_total)
-    track_thread_viewed_event(request, context["course"], cc_thread)
+    track_thread_viewed_event(request, context["course"], cc_thread, from_mfe_sidebar)
     return paginator.get_paginated_response(results)
 
 
@@ -1301,6 +1422,7 @@ def create_thread(request, thread_data):
         detail.
     """
     course_id = thread_data.get("course_id")
+    from_mfe_sidebar = thread_data.pop("enable_in_context_sidebar", False)
     user = request.user
     if not course_id:
         raise ValidationError({"course_id": ["This field is required."]})
@@ -1332,7 +1454,8 @@ def create_thread(request, thread_data):
     api_thread = serializer.data
     _do_extra_actions(api_thread, cc_thread, list(thread_data.keys()), actions_form, context, request)
 
-    track_thread_created_event(request, course, cc_thread, actions_form.cleaned_data["following"])
+    track_thread_created_event(request, course, cc_thread, actions_form.cleaned_data["following"],
+                               from_mfe_sidebar)
 
     return api_thread
 
@@ -1354,6 +1477,7 @@ def create_comment(request, comment_data):
         detail.
     """
     thread_id = comment_data.get("thread_id")
+    from_mfe_sidebar = comment_data.pop("enable_in_context_sidebar", False)
     if not thread_id:
         raise ValidationError({"thread_id": ["This field is required."]})
     cc_thread, context = _get_thread_and_context(request, thread_id)
@@ -1377,7 +1501,8 @@ def create_comment(request, comment_data):
     api_comment = serializer.data
     _do_extra_actions(api_comment, cc_comment, list(comment_data.keys()), actions_form, context, request)
 
-    track_comment_created_event(request, course, cc_comment, cc_thread["commentable_id"], followed=False)
+    track_comment_created_event(request, course, cc_comment, cc_thread["commentable_id"], followed=False,
+                                from_mfe_sidebar=from_mfe_sidebar)
 
     return api_comment
 
@@ -1521,12 +1646,14 @@ def get_response_comments(request, comment_id, page, page_size, requested_fields
     """
     try:
         cc_comment = Comment(id=comment_id).retrieve()
+        reverse_order = request.GET.get('reverse_order', False)
         cc_thread, context = _get_thread_and_context(
             request,
             cc_comment["thread_id"],
             retrieve_kwargs={
                 "with_responses": True,
                 "recursive": True,
+                "reverse_order": reverse_order,
             }
         )
         if cc_thread["thread_type"] == "question":

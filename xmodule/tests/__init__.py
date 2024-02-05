@@ -29,7 +29,7 @@ from xblock.fields import Reference, ReferenceList, ReferenceValueDict, ScopeIds
 from xmodule.capa.xqueue_interface import XQueueService
 from xmodule.assetstore import AssetMetadata
 from xmodule.contentstore.django import contentstore
-from xmodule.mako_module import MakoDescriptorSystem
+from xmodule.mako_block import MakoDescriptorSystem
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.draft_and_published import ModuleStoreDraftAndPublished
 from xmodule.modulestore.inheritance import InheritanceMixin
@@ -121,8 +121,8 @@ def get_test_system(
 
     id_manager = CourseLocationManager(course_id)
 
-    def get_module(descriptor):
-        """Mocks module_system get_module function"""
+    def get_block(descriptor):
+        """Mocks module_system get_block function"""
 
         # Unlike XBlock Runtimes or DescriptorSystems,
         # each XModule is provided with a new ModuleSystem.
@@ -138,8 +138,7 @@ def get_test_system(
         return descriptor
 
     return TestModuleSystem(
-        track_function=Mock(name='get_test_system.track_function'),
-        get_module=get_module,
+        get_block=get_block,
         services={
             'user': user_service,
             'mako': mako_service,
@@ -184,7 +183,7 @@ class ModelsTest(unittest.TestCase):  # lint-amnesty, pylint: disable=missing-cl
 
     def test_load_class(self):
         vc = XBlock.load_class('sequential')
-        vc_str = "<class 'xmodule.seq_module.SequenceBlock'>"
+        vc_str = "<class 'xmodule.seq_block.SequenceBlock'>"
         assert str(vc) == vc_str
 
 
@@ -465,9 +464,9 @@ class CourseComparisonTest(TestCase):
             actual_course_key, None, sort=('displayname', ModuleStoreEnum.SortOrder.descending)
         )
         assert len(expected_course_assets) == len(actual_course_assets)
-        for idx, __ in enumerate(expected_course_assets):
+        for idx, expected_val in enumerate(expected_course_assets):
             for attr in AssetMetadata.ATTRS_ALLOWED_TO_UPDATE:
                 if attr in ('edited_on',):
                     # edited_on is updated upon import.
                     continue
-                assert getattr(expected_course_assets[idx], attr) == getattr(actual_course_assets[idx], attr)
+                assert getattr(expected_val, attr) == getattr(actual_course_assets[idx], attr)

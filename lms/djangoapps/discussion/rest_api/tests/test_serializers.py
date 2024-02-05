@@ -242,6 +242,21 @@ class ThreadSerializerSerializationTest(SerializerTestMixin, SharedModuleStoreTe
         serialized = self.serialize(thread_data)
         assert 'response_count' not in serialized
 
+    def test_get_preview_body(self):
+        """
+        Test for the 'get_preview_body' method.
+
+        This test verifies that the 'get_preview_body' method returns a cleaned
+        version of the thread's body that is suitable for display as a preview.
+        The test specifically focuses on handling the presence of multiple
+        spaces within the body.
+        """
+        thread_data = self.make_cs_content(
+            {"body": "<p>This  is  a test thread body  with some text.</p>"}
+        )
+        serialized = self.serialize(thread_data)
+        assert serialized['preview_body'] == "This  is  a test thread body  with some text."
+
 
 @ddt.ddt
 class CommentSerializerTest(SerializerTestMixin, SharedModuleStoreTestCase):
@@ -670,7 +685,7 @@ class CommentSerializerDeserializationTest(ForumsEnableMixin, CommentsServiceMoc
         }
         self.existing_comment = Comment(**make_minimal_cs_comment({
             "id": "existing_comment",
-            "thread_id": "existing_thread",
+            "thread_id": "dummy",
             "body": "Original body",
             "user_id": str(self.user.id),
             "username": self.user.username,
@@ -870,7 +885,14 @@ class CommentSerializerDeserializationTest(ForumsEnableMixin, CommentsServiceMoc
         }
         self.register_put_comment_response(cs_response_data)
         data = {"raw_body": "Edited body", "endorsed": True}
+        self.register_get_thread_response(
+            make_minimal_cs_thread({
+                "id": "dummy",
+                "course_id": str(self.course.id),
+            })
+        )
         saved = self.save_and_reserialize(data, instance=self.existing_comment)
+
         assert parsed_body(httpretty.last_request()) == {
             'body': ['Edited body'],
             'course_id': [str(self.course.id)],

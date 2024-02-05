@@ -2,7 +2,7 @@
 Actions manager for transcripts ajax calls.
 +++++++++++++++++++++++++++++++++++++++++++
 
-Module do not support rollback (pressing "Cancel" button in Studio)
+Blocks do not support rollback (pressing "Cancel" button in Studio)
 All user changes are saved immediately.
 """
 
@@ -29,7 +29,7 @@ from xmodule.contentstore.django import contentstore  # lint-amnesty, pylint: di
 from xmodule.exceptions import NotFoundError  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.exceptions import ItemNotFoundError  # lint-amnesty, pylint: disable=wrong-import-order
-from xmodule.video_module.transcripts_utils import (  # lint-amnesty, pylint: disable=wrong-import-order
+from xmodule.video_block.transcripts_utils import (  # lint-amnesty, pylint: disable=wrong-import-order
     GetTranscriptsFromYouTubeException,
     Transcript,
     TranscriptsGenerationException,
@@ -124,9 +124,9 @@ def save_video_transcript(edx_video_id, input_format, transcript_content, langua
     return result
 
 
-def validate_video_module(request, locator):
+def validate_video_block(request, locator):
     """
-    Validates video module given its locator and request. Also, checks
+    Validates video block given its locator and request. Also, checks
     if requesting user has course authoring access.
 
     Arguments:
@@ -143,7 +143,7 @@ def validate_video_module(request, locator):
     try:
         item = _get_item(request, {'locator': locator})
         if item.category != 'video':
-            error = _('Transcripts are supported only for "video" modules.')
+            error = _('Transcripts are supported only for "video" blocks.')
     except (InvalidKeyError, ItemNotFoundError):
         error = _('Cannot find item by locator.')
 
@@ -175,7 +175,7 @@ def validate_transcript_upload_data(request):
         error = _('Video ID is required.')
 
     if not error:
-        error, video = validate_video_module(request, video_locator)
+        error, video = validate_video_block(request, video_locator)
         if not error:
             validated_data.update({
                 'video': video,
@@ -189,7 +189,7 @@ def validate_transcript_upload_data(request):
 @login_required
 def upload_transcripts(request):
     """
-    Upload transcripts for current module.
+    Upload transcripts for current block.
 
     returns: response dict::
 
@@ -250,7 +250,7 @@ def download_transcripts(request):
 
     Raises Http404 if unsuccessful.
     """
-    error, video = validate_video_module(request, locator=request.GET.get('locator'))
+    error, video = validate_video_block(request, locator=request.GET.get('locator'))
     if error:
         raise Http404
 
@@ -455,7 +455,7 @@ def _validate_transcripts_data(request):
         raise TranscriptsRequestValidationException(_("Can't find item by locator."))  # lint-amnesty, pylint: disable=raise-missing-from
 
     if item.category != 'video':
-        raise TranscriptsRequestValidationException(_('Transcripts are supported only for "video" modules.'))
+        raise TranscriptsRequestValidationException(_('Transcripts are supported only for "video" blocks.'))
 
     # parse data form request.GET.['data']['video'] to useful format
     videos = {'youtube': '', 'html5': {}}
@@ -491,7 +491,7 @@ def validate_transcripts_request(request, include_yt=False, include_html5=False)
     if not data:
         error = _('Incoming video data is empty.')
     else:
-        error, video = validate_video_module(request, locator=data.get('locator'))
+        error, video = validate_video_block(request, locator=data.get('locator'))
         if not error:
             validated_data.update({'video': video})
 

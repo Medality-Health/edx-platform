@@ -1,15 +1,17 @@
-"""Tests for serializers for the Learner Dashboard"""
+"""
+Tests for serializers for the Learner Home
+"""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from itertools import product
 from random import randint
 from unittest import mock
 from uuid import uuid4
 
+import ddt
 from django.conf import settings
 from django.urls import reverse
 from django.test import TestCase
-import ddt
 from opaque_keys.edx.keys import CourseKey
 
 
@@ -32,6 +34,7 @@ from lms.djangoapps.learner_home.serializers import (
     CourseProviderSerializer,
     CourseRunSerializer,
     CourseSerializer,
+    CreditSerializer,
     EmailConfirmationSerializer,
     EnrollmentSerializer,
     EnterpriseDashboardSerializer,
@@ -43,6 +46,8 @@ from lms.djangoapps.learner_home.serializers import (
     ProgramsSerializer,
     LearnerDashboardSerializer,
     RelatedProgramSerializer,
+    SocialMediaSiteSettingsSerializer,
+    SocialShareSettingsSerializer,
     SuggestedCourseSerializer,
     UnfulfilledEntitlementSerializer,
 )
@@ -161,16 +166,22 @@ class TestCourseProviderSerializer(LearnerDashboardBaseTest):
 class TestCourseSerializer(LearnerDashboardBaseTest):
     """Tests for the CourseSerializer"""
 
+    def create_test_context(self, course_id):
+        return {"course_share_urls": {course_id: random_url()}}
+
     def test_happy_path(self):
         test_enrollment = self.create_test_enrollment()
+        course_id = test_enrollment.course_overview.id
+        test_context = self.create_test_context(course_id)
 
         input_data = test_enrollment.course_overview
-        output_data = CourseSerializer(input_data).data
+        output_data = CourseSerializer(input_data, context=test_context).data
 
         assert output_data == {
             "bannerImgSrc": test_enrollment.course_overview.banner_image_url,
             "courseName": test_enrollment.course_overview.display_name_with_default,
             "courseNumber": test_enrollment.course_overview.display_number_with_default,
+            "socialShareUrl": test_context["course_share_urls"][course_id],
         }
 
 
@@ -205,12 +216,12 @@ class TestCourseRunSerializer(LearnerDashboardBaseTest):
         input_context = self.create_test_context(input_data.course.id)
 
         # ... where a user hasn't started
-        input_context["resume_course_urls"][input_data.course.id] = ""
+        input_context["resume_course_urls"][input_data.course.id] = None
 
         # When I serialize
         output_data = CourseRunSerializer(input_data, context=input_context).data
 
-        # Then the resumeUrl is None
+        # Then the resumeUrl is None, which is allowed
         self.assertIsNone(output_data["resumeUrl"])
 
 
@@ -309,15 +320,14 @@ class TestEnrollmentSerializer(LearnerDashboardBaseTest):
     def create_test_context(self, course):
         """Get a test context object"""
         return {
+            "audit_access_deadlines": {course.id: random_date()},
             "course_mode_info": {
                 course.id: {
-                    "expiration_datetime": random_date(),
                     "show_upsell": True,
                 }
             },
             "course_optouts": [],
             "show_email_settings_for": [course.id],
-            "show_courseware_link": {course.id: {"has_access": True}},
             "resume_course_urls": {course.id: "some_url"},
             "ecommerce_payment_page": random_url(),
         }
@@ -338,23 +348,33 @@ class TestEnrollmentSerializer(LearnerDashboardBaseTest):
         for key in output:
             assert output[key] is not None
 
-    def test_audit_access_expired(self):
+    @ddt.data(
+        (None, False),  # No expiration date, allowed for non-audit, non-expired.
+        (datetime.max, False),  # Expiration in the far future. Shouldn't be expired.
+        (datetime.min, True),  # Expiration in the far past. Should be expired.
+    )
+    @ddt.unpack
+    def test_audit_access_expired(self, expiration_datetime, should_be_expired):
+        # Given an enrollment
         input_data = self.create_test_enrollment()
         input_context = self.create_test_context(input_data.course)
 
-        # Example audit expired context
+        # With/out an expiration date (made timezone aware, if it exists)
+        expiration_datetime = (
+            expiration_datetime.replace(tzinfo=timezone.utc)
+            if expiration_datetime
+            else None
+        )
         input_context.update(
             {
-                "show_courseware_link": {
-                    input_data.course.id: {"error_code": "audit_expired"}
-                },
+                "audit_access_deadlines": {input_data.course.id: expiration_datetime},
             }
         )
 
-        serializer = EnrollmentSerializer(input_data, context=input_context)
-        output = serializer.data
+        # When I serialize
+        output = EnrollmentSerializer(input_data, context=input_context).data
 
-        assert output["isAuditAccessExpired"] is True
+        self.assertEqual(output["isAuditAccessExpired"], should_be_expired)
 
     @ddt.data(
         (random_url(), True, uuid4(), True),
@@ -418,17 +438,18 @@ class TestEnrollmentSerializer(LearnerDashboardBaseTest):
 class TestGradeDataSerializer(LearnerDashboardBaseTest):
     """Tests for the GradeDataSerializer"""
 
-    @mock.patch(
-        "lms.djangoapps.learner_home.serializers.user_has_passing_grade_in_course"
-    )
+    def create_test_context(self, course, is_passing):
+        """Get a test context object"""
+        return {"grade_statuses": {course.id: is_passing}}
+
     @ddt.data(True, False, None)
-    def test_happy_path(self, is_passing, mock_get_grade_data):
+    def test_happy_path(self, is_passing):
         # Given a course where I am/not passing
         input_data = self.create_test_enrollment()
-        mock_get_grade_data.return_value = is_passing
+        input_context = self.create_test_context(input_data.course, is_passing)
 
         # When I serialize grade data
-        output_data = GradeDataSerializer(input_data).data
+        output_data = GradeDataSerializer(input_data, context=input_context).data
 
         # Then I get the correct data shape out
         self.assertDictEqual(
@@ -706,7 +727,6 @@ class TestEntitlementSerializer(TestCase):
             "isExpired": bool(entitlement.expired_at),
             "expirationDate": expected_expiration_date,
             "uuid": str(entitlement.uuid),
-            "enrollmentUrl": f"/api/entitlements/v1/entitlements/{entitlement.uuid}/enrollments",
         }
 
 
@@ -792,16 +812,60 @@ class TestProgramsSerializer(TestCase):
         assert output_data == {"relatedPrograms": []}
 
 
+class TestCreditSerializer(LearnerDashboardBaseTest):
+    """Tests for the CreditSerializer"""
+
+    @classmethod
+    def create_test_data(cls, enrollment):
+        """Mock data following the shape of credit_statuses"""
+
+        return {
+            "course_key": str(enrollment.course.id),
+            "eligible": True,
+            "deadline": random_date(),
+            "purchased": False,
+            "provider_name": "Hogwarts",
+            "provider_status_url": "http://example.com/status",
+            "provider_id": "HSWW",
+            "request_status": "pending",
+            "error": False,
+        }
+
+    @classmethod
+    def create_test_context(cls, enrollment):
+        """Credit data, packaged as it would be for serialization context"""
+
+        return {enrollment.course_id: {**cls.create_test_data(enrollment)}}
+
+    def test_serialize_credit(self):
+        # Given an enrollment and a course with ability to purchase credit
+        enrollment = self.create_test_enrollment()
+        credit_data = self.create_test_data(enrollment)
+
+        # When I serialize
+        output_data = CreditSerializer(credit_data).data
+
+        # Then I get the appropriate data shape
+        self.assertDictEqual(
+            output_data,
+            {
+                "providerStatusUrl": credit_data["provider_status_url"],
+                "providerName": credit_data["provider_name"],
+                "providerId": credit_data["provider_id"],
+                "error": credit_data["error"],
+                "purchased": credit_data["purchased"],
+                "requestStatus": credit_data["request_status"],
+            },
+        )
+
+
 class TestLearnerEnrollmentsSerializer(LearnerDashboardBaseTest):
     """High-level tests for LearnerEnrollmentsSerializer"""
 
-    def test_happy_path(self):
-        """Test that nothing breaks and the output fields look correct"""
-
-        enrollment = self.create_test_enrollment()
-
-        input_data = enrollment
-        input_context = {
+    @classmethod
+    def create_test_context(cls, enrollment):
+        """Create context that is expected to be required / common across tests"""
+        return {
             "resume_course_urls": {enrollment.course.id: random_url()},
             "ecommerce_payment_page": random_url(),
             "course_mode_info": {
@@ -813,11 +877,18 @@ class TestLearnerEnrollmentsSerializer(LearnerDashboardBaseTest):
             "fulfilled_entitlements": {},
             "unfulfilled_entitlement_pseudo_sessions": {},
             "programs": {},
+            "credit_statuses": TestCreditSerializer.create_test_context(enrollment),
         }
 
-        output_data = LearnerEnrollmentSerializer(
-            input_data, context=input_context
-        ).data
+    def test_happy_path(self):
+        """Test that nothing breaks and the output fields look correct"""
+
+        enrollment = self.create_test_enrollment()
+        input_data = enrollment
+        input_context = self.create_test_context(enrollment)
+
+        output = LearnerEnrollmentSerializer(input_data, context=input_context).data
+
         expected_keys = [
             "courseProvider",
             "course",
@@ -827,8 +898,34 @@ class TestLearnerEnrollmentsSerializer(LearnerDashboardBaseTest):
             "certificate",
             "entitlement",
             "programs",
+            "credit",
         ]
-        assert output_data.keys() == set(expected_keys)
+
+        # Verify we have all the expected keys in our output
+        self.assertEqual(output.keys(), set(expected_keys))
+
+        # Entitlements should be the only empty field for an enrollment
+        entitlement = output.pop("entitlement")
+        self.assertDictEqual(entitlement, {})
+
+        # All other keys should have some basic info, unless we broke something
+        for key in output.keys():
+            self.assertNotEqual(output[key], {})
+
+    def test_credit_no_credit_option(self):
+        # Given an enrollment
+        enrollment = self.create_test_enrollment()
+        input_data = enrollment
+        input_context = self.create_test_context(enrollment)
+
+        # Given where the course does not offer the ability to purchase credit
+        input_context["credit_statuses"] = {}
+
+        # When I serialize
+        output = LearnerEnrollmentSerializer(input_data, context=input_context).data
+
+        # Then I return empty credit info
+        self.assertDictEqual(output["credit"], {})
 
 
 class TestUnfulfilledEntitlementSerializer(LearnerDashboardBaseTest):
@@ -884,6 +981,7 @@ class TestUnfulfilledEntitlementSerializer(LearnerDashboardBaseTest):
             "gradeData",
             "certificate",
             "enrollment",
+            "credit",
         ]
 
         assert output_data.keys() == set(expected_keys)
@@ -895,41 +993,12 @@ class TestUnfulfilledEntitlementSerializer(LearnerDashboardBaseTest):
             output_data["enrollment"]
             == UnfulfilledEntitlementSerializer.STATIC_ENTITLEMENT_ENROLLMENT_DATA
         )
-        assert output_data["course"] is not None
+        assert (
+            output_data["course"]
+            == CourseSerializer(pseudo_session_course_overviews.popitem()[1]).data
+        )
         assert output_data["courseProvider"] is not None
         assert output_data["programs"] == {"relatedPrograms": []}
-
-    def test_no_image(self):
-        # Given entitlements
-        (
-            unfulfilled_entitlement,
-            pseudo_sessions,
-            available_sessions,
-        ) = self.make_unfulfilled_entitlement()
-
-        # where pseudo sessions don't have images
-        for course_uuid in pseudo_sessions:
-            pseudo_session = pseudo_sessions[course_uuid]
-            pseudo_session["image"] = None
-
-        pseudo_session_course_overviews = self.make_pseudo_session_course_overviews(
-            unfulfilled_entitlement, pseudo_sessions
-        )
-
-        context = {
-            "unfulfilled_entitlement_pseudo_sessions": pseudo_sessions,
-            "course_entitlement_available_sessions": available_sessions,
-            "pseudo_session_course_overviews": pseudo_session_course_overviews,
-            "programs": {},
-        }
-
-        # When I serialize
-        output_data = UnfulfilledEntitlementSerializer(
-            unfulfilled_entitlement, context=context
-        ).data
-
-        # Then I get None for bannerImgSrc instead of throwing an exception
-        self.assertIsNone(output_data["course"]["bannerImgSrc"])
 
     def test_programs(self):
         (
@@ -1071,10 +1140,7 @@ class TestEnterpriseDashboardSerializer(TestCase):
 
         output_data = EnterpriseDashboardSerializer(input_data).data
 
-        expected_keys = [
-            "label",
-            "url",
-        ]
+        expected_keys = ["label", "url", "uuid"]
         self.assertEqual(output_data.keys(), set(expected_keys))
 
     def test_happy_path(self):
@@ -1091,8 +1157,54 @@ class TestEnterpriseDashboardSerializer(TestCase):
                 "url": settings.ENTERPRISE_LEARNER_PORTAL_BASE_URL
                 + "/"
                 + input_data["slug"],
+                "uuid": input_data["uuid"],
             },
         )
+
+
+class TestSocialMediaSettingsSiteSerializer(TestCase):
+    """Tests for the SocialMediaSiteSettingsSerializer"""
+
+    @classmethod
+    def generate_test_social_media_settings(cls):
+        return {
+            "is_enabled": random_bool(),
+            "brand": random_string(),
+            "utm_params": random_string(),
+        }
+
+    def test_structure(self):
+        """Test that nothing breaks and the output fields look correct"""
+        input_data = self.generate_test_social_media_settings()
+
+        output_data = SocialMediaSiteSettingsSerializer(input_data).data
+
+        expected_keys = [
+            "isEnabled",
+            "socialBrand",
+            "utmParams",
+        ]
+        self.assertEqual(output_data.keys(), set(expected_keys))
+
+
+class TestSocialShareSettingsSerializer(TestCase):
+    """Tests for the SocialShareSettingsSerializer"""
+
+    @classmethod
+    def generate_test_social_share_settings(cls):
+        return {
+            "twitter": TestSocialMediaSettingsSiteSerializer.generate_test_social_media_settings(),
+            "facebook": TestSocialMediaSettingsSiteSerializer.generate_test_social_media_settings(),
+        }
+
+    def test_structure(self):
+        """Test that nothing breaks and the output fields look correct"""
+        input_data = self.generate_test_social_share_settings()
+
+        output_data = SocialShareSettingsSerializer(input_data).data
+
+        expected_keys = ["twitter", "facebook"]
+        self.assertEqual(output_data.keys(), set(expected_keys))
 
 
 class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
@@ -1169,6 +1281,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             "resume_course_urls": resume_course_urls,
             "ecommerce_payment_page": random_url(),
             "course_mode_info": course_mode_info,
+            "credit_statuses": {},
             "fulfilled_entitlements": fulfilled_entitlements,
             "unfulfilled_entitlement_pseudo_sessions": unfulfilled_entitlement_pseudo_sessions,
             "course_entitlement_available_sessions": course_entitlement_available_sessions,
@@ -1186,6 +1299,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             "platformSettings": None,
             "enrollments": [],
             "unfulfilledEntitlements": [],
+            "socialShareSettings": None,
             "suggestedCourses": [],
         }
         output_data = LearnerDashboardSerializer(input_data).data
@@ -1197,6 +1311,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
                 "enterpriseDashboard": None,
                 "platformSettings": None,
                 "courses": [],
+                "socialShareSettings": None,
                 "suggestedCourses": [],
             },
         )
@@ -1216,6 +1331,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             "platformSettings": None,
             "enrollments": enrollments,
             "unfulfilledEntitlements": [],
+            "socialShareSettings": None,
             "suggestedCourses": [],
         }
 
@@ -1243,6 +1359,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             "platformSettings": None,
             "enrollments": enrollments,
             "unfulfilledEntitlements": unfulfilled_entitlements,
+            "socialShareSettings": None,
             "suggestedCourses": [],
         }
 
@@ -1277,6 +1394,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             "platformSettings": None,
             "enrollments": [],
             "unfulfilledEntitlements": [],
+            "socialShareSettings": None,
             "suggestedCourses": suggested_courses,
         }
         output_data = LearnerDashboardSerializer(input_data).data
@@ -1287,6 +1405,9 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
 
     @mock.patch(
         "lms.djangoapps.learner_home.serializers.SuggestedCourseSerializer.to_representation"
+    )
+    @mock.patch(
+        "lms.djangoapps.learner_home.serializers.SocialShareSettingsSerializer.to_representation"
     )
     @mock.patch(
         "lms.djangoapps.learner_home.serializers.UnfulfilledEntitlementSerializer.data"
@@ -1310,6 +1431,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
         mock_platform_settings_serializer,
         mock_learner_enrollment_serializer,
         mock_entitlement_serializer,
+        mock_social_settings_serializer,
         mock_suggestions_serializer,
     ):
         mock_email_confirmation_serializer.return_value = (
@@ -1325,6 +1447,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             mock_learner_enrollment_serializer
         )
         mock_entitlement_serializer.return_value = mock_entitlement_serializer
+        mock_social_settings_serializer.return_value = mock_social_settings_serializer
         mock_suggestions_serializer.return_value = mock_suggestions_serializer
 
         input_data = {
@@ -1333,6 +1456,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
             "platformSettings": {},
             "enrollments": [{}],
             "unfulfilledEntitlements": [{}],
+            "socialShareSettings": {},
             "suggestedCourses": [{}],
         }
         output_data = LearnerDashboardSerializer(input_data).data
@@ -1347,6 +1471,7 @@ class TestLearnerDashboardSerializer(LearnerDashboardBaseTest):
                     mock_learner_enrollment_serializer,
                     mock_entitlement_serializer,
                 ],
+                "socialShareSettings": mock_social_settings_serializer,
                 "suggestedCourses": [mock_suggestions_serializer],
             },
         )

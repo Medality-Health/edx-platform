@@ -15,7 +15,7 @@ from lazy import lazy
 from lxml import etree
 from opaque_keys.edx.asides import AsideDefinitionKeyV2, AsideUsageKeyV2
 from opaque_keys.edx.keys import UsageKey
-from pkg_resources import resource_isdir, resource_string, resource_filename
+from pkg_resources import resource_isdir, resource_filename
 from web_fragments.fragment import Fragment
 from webob import Response
 from webob.multidict import MultiDict
@@ -87,9 +87,11 @@ DEFAULT_PUBLIC_VIEW_MESSAGE = (
     'Sign in or register, and enroll in this course to view it.'
 )
 
+
 # Make '_' a no-op so we can scrape strings. Using lambda instead of
 #  `django.utils.translation.ugettext_noop` because Django cannot be imported in this file
-_ = lambda text: text
+def _(text):
+    return text
 
 
 class OpaqueKeyReader(IdReader):
@@ -204,49 +206,17 @@ class AsideKeyGenerator(IdGenerator):
         raise NotImplementedError("Specific Modulestores must provide implementations of create_definition")
 
 
-def dummy_track(_event_type, _event):
-    pass
-
-
 class HTMLSnippet:
     """
     A base class defining an interface for an object that is able to present an
     html snippet, along with associated javascript and css
     """
 
-    js = {}
-    js_module_name = None
-
     preview_view_js = {}
     studio_view_js = {}
 
-    css = {}
     preview_view_css = {}
     studio_view_css = {}
-
-    @classmethod
-    def get_javascript(cls):
-        """
-        Return a dictionary containing some of the following keys:
-
-            coffee: A list of coffeescript fragments that should be compiled and
-                    placed on the page
-
-            js: A list of javascript fragments that should be included on the
-            page
-
-        All of these will be loaded onto the page in the CMS
-        """
-        # cdodge: We've moved the xmodule.coffee script from an outside directory into the xmodule area of common
-        # this means we need to make sure that all xmodules include this dependency which had been previously implicitly
-        # fulfilled in a different area of code
-        coffee = cls.js.setdefault('coffee', [])  # lint-amnesty, pylint: disable=unused-variable
-        js = cls.js.setdefault('js', [])  # lint-amnesty, pylint: disable=unused-variable
-
-        # Added xmodule.js separately to enforce 000 prefix for this only.
-        cls.js.setdefault('xmodule_js', resource_string(__name__, 'js/src/xmodule.js'))
-
-        return cls.js
 
     @classmethod
     def get_preview_view_js(cls):
@@ -263,22 +233,6 @@ class HTMLSnippet:
     @classmethod
     def get_studio_view_js_bundle_name(cls):
         return cls.__name__ + 'Studio'
-
-    @classmethod
-    def get_css(cls):
-        """
-        Return a dictionary containing some of the following keys:
-
-            css: A list of css fragments that should be applied to the html
-                 contents of the snippet
-
-            sass: A list of sass fragments that should be applied to the html
-                  contents of the snippet
-
-            scss: A list of scss fragments that should be applied to the html
-                  contents of the snippet
-        """
-        return cls.css
 
     @classmethod
     def get_preview_view_css(cls):
@@ -326,6 +280,7 @@ class XModuleFields:
     )
 
 
+@XBlock.needs("i18n")
 class XModuleMixin(XModuleFields, XBlock):
     """
     Fields and methods used by XModules internally.
@@ -565,28 +520,14 @@ class XModuleMixin(XModuleFields, XBlock):
         child.runtime.export_fs = self.runtime.export_fs
         return child
 
-    def get_required_module_descriptors(self):
-        """Returns a list of XModuleDescriptor instances upon which this module depends, but are
-        not children of this module"""
+    def get_required_block_descriptors(self):
+        """
+        Return a list of XBlock instances upon which this block depends but are
+        not children of this block.
+
+        TODO: Move this method directly to the ConditionalBlock.
+        """
         return []
-
-    def get_display_items(self):
-        """
-        Returns a list of descendent module instances that will display
-        immediately inside this module.
-        """
-        items = []
-        for child in self.get_children():
-            items.extend(child.displayable_items())
-
-        return items
-
-    def displayable_items(self):
-        """
-        Returns list of displayable modules contained by this module. If this
-        module is visible, should return [self].
-        """
-        return [self]
 
     def get_child_by(self, selector):
         """
@@ -1217,7 +1158,7 @@ class DescriptorSystem(MetricsMixin, ConfigurableFragmentWrapper, Runtime):
         raise NotImplementedError("edX Platform doesn't currently implement XBlock resource urls")
 
     def add_block_as_child_node(self, block, node):
-        child = etree.SubElement(node, "unknown")
+        child = etree.SubElement(node, block.category)
         child.set('url_name', block.url_name)
         block.add_xml_to_node(child)
 
@@ -1241,7 +1182,7 @@ class DescriptorSystem(MetricsMixin, ConfigurableFragmentWrapper, Runtime):
         """
         # getting the service from parent module. making sure of block service declarations.
         service = super().service(block=block, service_name=service_name)
-        # Passing the block to service if it is callable e.g. ModuleI18nService. It is the responsibility of calling
+        # Passing the block to service if it is callable e.g. XBlockI18nService. It is the responsibility of calling
         # service to handle the passing argument.
         if callable(service):
             return service(block)
@@ -1667,7 +1608,7 @@ class ModuleSystemShim:
     def rebind_noauth_module_to_user(self):
         """
         A function that was used to bind modules initialized by AnonymousUsers to real users. Mainly used
-        by the LTI Module to connect the right users with the requests from LTI tools.
+        by the LTI Block to connect the right users with the requests from LTI tools.
 
         Deprecated in favour of the "rebind_user" service.
         """
@@ -1721,38 +1662,26 @@ class ModuleSystem(MetricsMixin, ConfigurableFragmentWrapper, ModuleSystemShim, 
 
     def __init__(
         self,
-        track_function,
-        get_module,
+        get_block,
         descriptor_runtime,
-        publish=None,
         **kwargs,
     ):
         """
         Create a closure around the system environment.
 
-        track_function - function of (event_type, event), intended for logging
-                         or otherwise tracking the event.
-                         TODO: Not used, and has inconsistent args in different
-                         files.  Update or remove.
-
-        get_module - function that takes a descriptor and returns a corresponding
-                         module instance object.  If the current user does not have
+        get_block - function that takes a descriptor and returns a corresponding
+                         block instance object.  If the current user does not have
                          access to that location, returns None.
 
         descriptor_runtime - A `DescriptorSystem` to use for loading xblocks by id
-
-        publish(event) - A function that allows XModules to publish events (such as grade changes)
         """
 
         kwargs.setdefault('id_reader', getattr(descriptor_runtime, 'id_reader', OpaqueKeyReader()))
         kwargs.setdefault('id_generator', getattr(descriptor_runtime, 'id_generator', AsideKeyGenerator()))
         super().__init__(**kwargs)
 
-        self.track_function = track_function
-        self.get_module = get_module
+        self.get_block_for_descriptor = get_block
 
-        if publish:
-            self.publish = publish
         self.xmodule_instance = None
 
         self.descriptor_runtime = descriptor_runtime
@@ -1782,13 +1711,18 @@ class ModuleSystem(MetricsMixin, ConfigurableFragmentWrapper, ModuleSystemShim, 
         return self.handler_url(self.xmodule_instance, 'xmodule_handler', '', '').rstrip('/?')
 
     def get_block(self, block_id, for_parent=None):  # lint-amnesty, pylint: disable=arguments-differ
-        return self.get_module(self.descriptor_runtime.get_block(block_id, for_parent=for_parent))
+        return self.get_block_for_descriptor(self.descriptor_runtime.get_block(block_id, for_parent=for_parent))
 
     def resource_url(self, resource):
         raise NotImplementedError("edX Platform doesn't currently implement XBlock resource urls")
 
     def publish(self, block, event_type, event):  # lint-amnesty, pylint: disable=arguments-differ
-        pass
+        """
+        Publish events through the `EventPublishingService`.
+        This ensures that the correct track method is used for Instructor tasks.
+        """
+        if publish_service := self._services.get('publish'):
+            publish_service.publish(block, event_type, event)
 
     def service(self, block, service_name):
         """
@@ -1806,7 +1740,7 @@ class ModuleSystem(MetricsMixin, ConfigurableFragmentWrapper, ModuleSystemShim, 
         """
         # getting the service from parent module. making sure of block service declarations.
         service = super().service(block=block, service_name=service_name)
-        # Passing the block to service if it is callable e.g. ModuleI18nService. It is the responsibility of calling
+        # Passing the block to service if it is callable e.g. XBlockI18nService. It is the responsibility of calling
         # service to handle the passing argument.
         if callable(service):
             return service(block)
@@ -1846,7 +1780,7 @@ class CombinedSystem:
 
         """
         context = context or {}
-        return self.__getattr__('render')(block, view_name, context)
+        return self.__getattr__('render')(block, view_name, context)  # pylint: disable=unnecessary-dunder-call
 
     def service(self, block, service_name):
         """Return a service, or None.

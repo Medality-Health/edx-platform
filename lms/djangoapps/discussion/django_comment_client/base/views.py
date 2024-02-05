@@ -19,6 +19,7 @@ from opaque_keys.edx.keys import CourseKey
 
 import lms.djangoapps.discussion.django_comment_client.settings as cc_settings
 import openedx.core.djangoapps.django_comment_common.comment_client as cc
+from common.djangoapps.student.roles import GlobalStaff
 from common.djangoapps.util.file import store_uploaded_file
 from common.djangoapps.track import contexts
 from lms.djangoapps.courseware.access import has_access
@@ -111,7 +112,7 @@ def add_truncated_title_to_event_data(event_data, full_title):
     event_data['title'] = full_title[:TRACKING_MAX_FORUM_TITLE]
 
 
-def track_thread_created_event(request, course, thread, followed):
+def track_thread_created_event(request, course, thread, followed, from_mfe_sidebar=False):
     """
     Send analytics event for a newly created thread.
     """
@@ -123,6 +124,7 @@ def track_thread_created_event(request, course, thread, followed):
         'anonymous': thread.anonymous,
         'anonymous_to_peers': thread.anonymous_to_peers,
         'options': {'followed': followed},
+        'from_mfe_sidebar': from_mfe_sidebar,
         # There is a stated desire for an 'origin' property that will state
         # whether this thread was created via courseware or the forum.
         # However, the view does not contain that data, and including it will
@@ -132,7 +134,7 @@ def track_thread_created_event(request, course, thread, followed):
     track_created_event(request, event_name, course, thread, event_data)
 
 
-def track_comment_created_event(request, course, comment, commentable_id, followed):
+def track_comment_created_event(request, course, comment, commentable_id, followed, from_mfe_sidebar=False):
     """
     Send analytics event for a newly created response or comment.
     """
@@ -142,6 +144,7 @@ def track_comment_created_event(request, course, comment, commentable_id, follow
         'discussion': {'id': comment.thread_id},
         'commentable_id': commentable_id,
         'options': {'followed': followed},
+        'from_mfe_sidebar': from_mfe_sidebar,
     }
     parent_id = comment.get('parent_id')
     if parent_id:
@@ -178,13 +181,14 @@ def track_forum_search_event(request, course, search_event_data):
         tracker.emit(event_name, search_event_data)
 
 
-def track_thread_viewed_event(request, course, thread):
+def track_thread_viewed_event(request, course, thread, from_mfe_sidebar=False):
     """
     Send analytics event for a viewed thread.
     """
     event_name = _EVENT_NAME_TEMPLATE.format(obj_type='thread', action_name='viewed')
     event_data = {}
     event_data['commentable_id'] = thread.get('commentable_id', '')
+    event_data['from_mfe_sidebar'] = from_mfe_sidebar
     if hasattr(thread, 'username'):
         event_data['target_username'] = thread.get('username', '')
     add_truncated_title_to_event_data(event_data, thread.get('title', ''))
@@ -349,6 +353,27 @@ def track_comment_unreported_event(request, course, comment):
     track_forum_event(request, event_name, course, comment, event_data)
 
 
+def track_response_mark_event(request, course, comment, thread, action_name):
+    """
+    Send analytics event for response that is marked as endorsed or answered.
+    """
+    event_name = _EVENT_NAME_TEMPLATE.format(obj_type='response', action_name=action_name)
+    if getattr(thread, 'thread_type', '') == 'question':
+        mark_type = 'Answer'
+    else:
+        mark_type = 'Endorse'
+    event_data = {
+        'discussion': {'id': comment.thread_id},
+        'commentable_id': getattr(thread, 'commentable_id', None),
+        'is_thread_author': getattr(thread, 'user_id', None) == str(request.user.id),
+        'is_global_staff': GlobalStaff().has_user(request.user),
+        'mark_type': mark_type,
+        'target_username': comment.get('username')
+    }
+
+    track_forum_event(request, event_name, course, comment, event_data)
+
+
 def track_discussion_reported_event(request, course, cc_content):
     """
     Helper method for discussion reported events.
@@ -367,6 +392,15 @@ def track_discussion_unreported_event(request, course, cc_content):
         track_thread_unreported_event(request, course, cc_content)
     else:
         track_comment_unreported_event(request, course, cc_content)
+
+
+def track_forum_response_mark_event(request, course, cc_content, value):
+    """
+    Helper method for discussions response mark event
+    """
+    thread = cc.Thread.find(cc_content.thread_id)
+    action_name = 'mark' if value else 'unmark'
+    track_response_mark_event(request, course, cc_content, thread, action_name)
 
 
 def permitted(func):
@@ -661,11 +695,14 @@ def endorse_comment(request, course_id, comment_id):
     """
     course_key = CourseKey.from_string(course_id)
     comment = cc.Comment.find(comment_id)
+    course = get_course_with_access(request.user, 'load', course_key)
     user = request.user
-    comment.endorsed = request.POST.get('endorsed', 'false').lower() == 'true'
+    endorsed = request.POST.get('endorsed', 'false').lower() == 'true'
+    comment.endorsed = endorsed
     comment.endorsement_user_id = user.id
     comment.save()
     comment_endorsed.send(sender=None, user=user, post=comment)
+    track_forum_response_mark_event(request, course, comment, endorsed)
     return JsonResponse(prepare_content(comment.to_dict(), course_key))
 
 

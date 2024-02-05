@@ -594,6 +594,8 @@ AUTHN_MICROFRONTEND_URL = "http://authn-mfe"
 AUTHN_MICROFRONTEND_DOMAIN = "authn-mfe"
 LEARNING_MICROFRONTEND_URL = "http://learning-mfe"
 DISCUSSIONS_MICROFRONTEND_URL = "http://discussions-mfe"
+LEARNER_HOME_MICROFRONTEND_URL = "http://learner-home-mfe"
+ORA_GRADING_MICROFRONTEND_URL = "http://ora-grading-mfe"
 
 ########################## limiting dashboard courses ######################
 
@@ -669,3 +671,8 @@ MFE_CONFIG_OVERRIDES = {
         "LOGO_URL": "https://courses.example.com/yourmfe-logo.png",
     },
 }
+
+############## Settings for survey report ##############
+SURVEY_REPORT_EXTRA_DATA = {}
+SURVEY_REPORT_ENDPOINT = "https://example.com/survey_report"
+ANONYMOUS_SURVEY_REPORT = False

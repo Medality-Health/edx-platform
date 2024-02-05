@@ -26,13 +26,18 @@ from lms.djangoapps.discussion.rest_api.utils import get_usernames_from_search_s
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, SharedModuleStoreTestCase
-from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory, check_mongo_calls
+from xmodule.modulestore.tests.factories import CourseFactory, BlockFactory, check_mongo_calls
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.course_modes.tests.factories import CourseModeFactory
 from common.djangoapps.student.models import get_retired_username_by_username, CourseEnrollment
 from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole, GlobalStaff
-from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, SuperuserFactory, UserFactory
+from common.djangoapps.student.tests.factories import (
+    AdminFactory,
+    CourseEnrollmentFactory,
+    SuperuserFactory,
+    UserFactory
+)
 from common.djangoapps.util.testing import PatchMediaTypeMixin, UrlResetMixin
 from common.test.utils import disable_signal
 from lms.djangoapps.discussion.django_comment_client.tests.utils import (
@@ -50,6 +55,9 @@ from lms.djangoapps.discussion.rest_api.tests.utils import (
     parsed_body,
 )
 from openedx.core.djangoapps.course_groups.tests.helpers import config_course_cohorts
+from openedx.core.djangoapps.discussions.config.waffle import ENABLE_NEW_STRUCTURE_DISCUSSIONS
+from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration, DiscussionTopicLink, Provider
+from openedx.core.djangoapps.discussions.tasks import update_discussions_settings_from_course_task
 from openedx.core.djangoapps.django_comment_common.models import CourseDiscussionSettings, Role
 from openedx.core.djangoapps.django_comment_common.utils import seed_permissions_roles
 from openedx.core.djangoapps.oauth_dispatch.jwt import create_jwt_for_user
@@ -521,6 +529,8 @@ class CourseViewTest(DiscussionAPIViewTestMixin, ModuleStoreTestCase):
                 "allow_anonymous": True,
                 "allow_anonymous_to_peers": False,
                 "has_moderation_privileges": False,
+                'is_course_admin': False,
+                'is_course_staff': False,
                 "is_group_ta": False,
                 'is_user_admin': False,
                 "user_roles": ["Student"],
@@ -720,7 +730,7 @@ class CourseTopicsViewTest(DiscussionAPIViewTestMixin, CommentsServiceMockMixin,
         }
         self.register_get_course_commentable_counts_response(self.course.id, self.thread_counts_map)
 
-    def create_course(self, modules_count, module_store, topics):
+    def create_course(self, blocks_count, module_store, topics):
         """
         Create a course in a specified module store with discussion xblocks and topics
         """
@@ -735,8 +745,8 @@ class CourseTopicsViewTest(DiscussionAPIViewTestMixin, CommentsServiceMockMixin,
         CourseEnrollmentFactory.create(user=self.user, course_id=course.id)
         course_url = reverse("course_topics", kwargs={"course_id": str(course.id)})
         # add some discussion xblocks
-        for i in range(modules_count):
-            ItemFactory.create(
+        for i in range(blocks_count):
+            BlockFactory.create(
                 parent_location=course.location,
                 category='discussion',
                 discussion_id=f'id_module_{i}',
@@ -750,7 +760,7 @@ class CourseTopicsViewTest(DiscussionAPIViewTestMixin, CommentsServiceMockMixin,
         """
         Build a discussion xblock in self.course
         """
-        ItemFactory.create(
+        BlockFactory.create(
             parent_location=self.course.location,
             category="discussion",
             discussion_id=topic_id,
@@ -794,8 +804,8 @@ class CourseTopicsViewTest(DiscussionAPIViewTestMixin, CommentsServiceMockMixin,
         (10, ModuleStoreEnum.Type.split, 2, {"Test Topic 1": {"id": "test_topic_1"}}),
     )
     @ddt.unpack
-    def test_bulk_response(self, modules_count, module_store, mongo_calls, topics):
-        course_url, course_id = self.create_course(modules_count, module_store, topics)
+    def test_bulk_response(self, blocks_count, module_store, mongo_calls, topics):
+        course_url, course_id = self.create_course(blocks_count, module_store, topics)
         self.register_get_course_commentable_counts_response(course_id, {})
         with check_mongo_calls(mongo_calls):
             with modulestore().default_store(module_store):
@@ -865,6 +875,138 @@ class CourseTopicsViewTest(DiscussionAPIViewTestMixin, CommentsServiceMockMixin,
                 ]
             }
         )
+
+    @override_waffle_flag(ENABLE_NEW_STRUCTURE_DISCUSSIONS, True)
+    def test_new_course_structure_response(self):
+        """
+        Tests whether the new structure is available on old topics API
+        (For mobile compatibility)
+        """
+        chapter = BlockFactory.create(
+            parent_location=self.course.location,
+            category='chapter',
+            display_name="Week 1",
+            start=datetime(2015, 3, 1, tzinfo=UTC),
+        )
+        sequential = BlockFactory.create(
+            parent_location=chapter.location,
+            category='sequential',
+            display_name="Lesson 1",
+            start=datetime(2015, 3, 1, tzinfo=UTC),
+        )
+        BlockFactory.create(
+            parent_location=sequential.location,
+            category='vertical',
+            display_name='vertical',
+            start=datetime(2015, 4, 1, tzinfo=UTC),
+        )
+        DiscussionsConfiguration.objects.create(
+            context_key=self.course.id,
+            provider_type=Provider.OPEN_EDX
+        )
+        update_discussions_settings_from_course_task(str(self.course.id))
+        response = json.loads(self.client.get(self.url).content.decode())
+        keys = ['children', 'id', 'name', 'thread_counts', 'thread_list_url']
+        assert list(response.keys()) == ['courseware_topics', 'non_courseware_topics']
+        assert len(response['courseware_topics']) == 1
+        courseware_keys = list(response['courseware_topics'][0].keys())
+        courseware_keys.sort()
+        assert courseware_keys == keys
+        assert len(response['non_courseware_topics']) == 1
+        non_courseware_keys = list(response['non_courseware_topics'][0].keys())
+        non_courseware_keys.sort()
+        assert non_courseware_keys == keys
+
+
+@ddt.ddt
+@mock.patch('lms.djangoapps.discussion.rest_api.api._get_course', mock.Mock())
+@mock.patch.dict("django.conf.settings.FEATURES", {"ENABLE_DISCUSSION_SERVICE": True})
+@override_waffle_flag(ENABLE_NEW_STRUCTURE_DISCUSSIONS, True)
+class CourseTopicsViewV3Test(DiscussionAPIViewTestMixin, CommentsServiceMockMixin, ModuleStoreTestCase):
+    """
+    Tests for CourseTopicsViewV3
+    """
+    def setUp(self) -> None:
+        super().setUp()
+        self.password = "password"
+        self.user = UserFactory.create(password=self.password)
+        self.client.login(username=self.user.username, password=self.password)
+        self.staff = AdminFactory.create()
+        self.course = CourseFactory.create(
+            start=datetime(2020, 1, 1),
+            end=datetime(2028, 1, 1),
+            enrollment_start=datetime(2020, 1, 1),
+            enrollment_end=datetime(2028, 1, 1),
+            discussion_topics={"Course Wide Topic": {
+                "id": 'course-wide-topic',
+                "usage_key": None,
+            }}
+        )
+        self.chapter = BlockFactory.create(
+            parent_location=self.course.location,
+            category='chapter',
+            display_name="Week 1",
+            start=datetime(2015, 3, 1, tzinfo=UTC),
+        )
+        self.sequential = BlockFactory.create(
+            parent_location=self.chapter.location,
+            category='sequential',
+            display_name="Lesson 1",
+            start=datetime(2015, 3, 1, tzinfo=UTC),
+        )
+        self.verticals = [
+            BlockFactory.create(
+                parent_location=self.sequential.location,
+                category='vertical',
+                display_name='vertical',
+                start=datetime(2015, 4, 1, tzinfo=UTC),
+            )
+        ]
+        course_key = self.course.id
+        self.config = DiscussionsConfiguration.objects.create(context_key=course_key, provider_type=Provider.OPEN_EDX)
+        topic_links = []
+        update_discussions_settings_from_course_task(str(course_key))
+        topic_id_query = DiscussionTopicLink.objects.filter(context_key=course_key).values_list(
+            'external_id', flat=True,
+        )
+        topic_ids = list(topic_id_query.order_by('ordering'))
+        DiscussionTopicLink.objects.bulk_create(topic_links)
+        self.topic_stats = {
+            **{topic_id: dict(discussion=random.randint(0, 10), question=random.randint(0, 10))
+               for topic_id in set(topic_ids)},
+            topic_ids[0]: dict(discussion=0, question=0),
+        }
+        patcher = mock.patch(
+            'lms.djangoapps.discussion.rest_api.api.get_course_commentable_counts',
+            mock.Mock(return_value=self.topic_stats),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.url = reverse("course_topics_v3", kwargs={"course_id": str(self.course.id)})
+
+    def test_basic(self):
+        response = self.client.get(self.url)
+        data = json.loads(response.content.decode())
+        expected_non_courseware_keys = [
+            'id', 'usage_key', 'name', 'thread_counts', 'enabled_in_context',
+            'courseware'
+        ]
+        expected_courseware_keys = [
+            'id', 'block_id', 'lms_web_url', 'legacy_web_url', 'student_view_url',
+            'type', 'display_name', 'children', 'courseware'
+        ]
+        assert response.status_code == 200
+        assert len(data) == 2
+        non_courseware_topic_keys = list(data[0].keys())
+        assert non_courseware_topic_keys == expected_non_courseware_keys
+        courseware_topic_keys = list(data[1].keys())
+        assert courseware_topic_keys == expected_courseware_keys
+        expected_courseware_keys.remove('courseware')
+        sequential_keys = list(data[1]['children'][0].keys())
+        assert sequential_keys == (expected_courseware_keys + ['thread_counts'])
+        expected_non_courseware_keys.remove('courseware')
+        vertical_keys = list(data[1]['children'][0]['children'][0].keys())
+        assert vertical_keys == expected_non_courseware_keys
 
 
 @ddt.ddt
@@ -1230,7 +1372,7 @@ class ThreadViewSetCreateTest(DiscussionAPIViewTestMixin, ModuleStoreTestCase):
             "topic_id": "test_topic",
             "type": "discussion",
             "title": "Test Title",
-            "raw_body": "# Test \n This is a very long body that will be truncated for the preview.",
+            "raw_body": "# Test \n This is a very long body but will not be truncated for the preview.",
         }
         response = self.client.post(
             self.url,
@@ -1241,16 +1383,17 @@ class ThreadViewSetCreateTest(DiscussionAPIViewTestMixin, ModuleStoreTestCase):
         response_data = json.loads(response.content.decode('utf-8'))
         assert response_data == self.expected_thread_data({
             "read": True,
-            "raw_body": "# Test \n This is a very long body that will be truncated for the preview.",
-            "preview_body": "Test This is a very long body that…",
-            "rendered_body": "<h1>Test</h1>\n<p>This is a very long body that will be truncated for the preview.</p>",
+            "raw_body": "# Test \n This is a very long body but will not be truncated for the preview.",
+            "preview_body": "Test This is a very long body but will not be truncated for the preview.",
+            "rendered_body": "<h1>Test</h1>\n<p>This is a very long body but will not be truncated for"
+                             " the preview.</p>",
         })
         assert parsed_body(httpretty.last_request()) == {
             'course_id': [str(self.course.id)],
             'commentable_id': ['test_topic'],
             'thread_type': ['discussion'],
             'title': ['Test Title'],
-            'body': ['# Test \n This is a very long body that will be truncated for the preview.'],
+            'body': ['# Test \n This is a very long body but will not be truncated for the preview.'],
             'user_id': [str(self.user.id)],
             'anonymous': ['False'],
             'anonymous_to_peers': ['False'],
@@ -1887,6 +2030,7 @@ class CommentViewSetListTest(DiscussionAPIViewTestMixin, ModuleStoreTestCase, Pr
                 "mark_as_read": ["False"],
                 "recursive": ["False"],
                 "with_responses": ["True"],
+                "reverse_order": ["False"],
             }
         )
 
@@ -1921,6 +2065,7 @@ class CommentViewSetListTest(DiscussionAPIViewTestMixin, ModuleStoreTestCase, Pr
                 "mark_as_read": ["False"],
                 "recursive": ["False"],
                 "with_responses": ["True"],
+                "reverse_order": ["False"],
             }
         )
 
@@ -2135,6 +2280,35 @@ class CommentViewSetListTest(DiscussionAPIViewTestMixin, ModuleStoreTestCase, Pr
             response_users = response_comment['users']
             assert expected_author_profile_data == response_users[response_comment['author']]
             assert response_comment['endorsed_by'] not in response_users
+
+    def test_reverse_order_sort(self):
+        """
+        Tests if reverse_order param is passed to cs comments service
+        """
+        self.register_get_user_response(self.user, upvoted_ids=["test_comment"])
+        source_comments = [
+            self.create_source_comment({"user_id": str(self.author.id), "username": self.author.username})
+        ]
+        self.register_get_thread_response({
+            "id": self.thread_id,
+            "course_id": str(self.course.id),
+            "thread_type": "discussion",
+            "children": source_comments,
+            "resp_total": 100,
+        })
+        self.client.get(self.url, {"thread_id": self.thread_id, "reverse_order": True})
+        self.assert_query_params_equal(
+            httpretty.httpretty.latest_requests[-2],
+            {
+                "resp_skip": ["0"],
+                "resp_limit": ["10"],
+                "user_id": [str(self.user.id)],
+                "mark_as_read": ["False"],
+                "recursive": ["False"],
+                "with_responses": ["True"],
+                "reverse_order": ["True"],
+            }
+        )
 
 
 @httpretty.activate
@@ -2604,7 +2778,7 @@ class CourseDiscussionSettingsAPIViewTest(APITestCase, UrlResetMixin, ModuleStor
         divided_course_wide_discussions = ['Topic B', ]
         divided_discussions = divided_inline_discussions + divided_course_wide_discussions
 
-        ItemFactory.create(
+        BlockFactory.create(
             parent=self.course,
             category='discussion',
             discussion_id=topic_name_to_id(self.course, 'Topic A'),
@@ -2828,7 +3002,7 @@ class CourseDiscussionSettingsAPIViewTest(APITestCase, UrlResetMixin, ModuleStor
         self._assert_current_settings(expected_response)
 
         now = datetime.now()
-        ItemFactory.create(
+        BlockFactory.create(
             parent_location=self.course.location,
             category='discussion',
             discussion_id='Topic_A',

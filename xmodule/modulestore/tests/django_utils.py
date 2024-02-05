@@ -76,7 +76,7 @@ def mixed_store_config(data_dir, mappings, store_order=None, modulestore_options
         store_order = [StoreConstructors.draft, StoreConstructors.split]
 
     options = {
-        'default_class': 'xmodule.hidden_module.HiddenDescriptor',
+        'default_class': 'xmodule.hidden_block.HiddenBlock',
         'fs_root': data_dir,
         'render_template': 'common.djangoapps.edxmako.shortcuts.render_to_string',
     }
@@ -318,7 +318,7 @@ class ModuleStoreIsolationMixin(CacheIsolationMixin, SignalIsolationMixin):
 
         cls.__old_modulestores.append(copy.deepcopy(settings.MODULESTORE))
         cls.__old_contentstores.append(copy.deepcopy(settings.CONTENTSTORE))
-        override.__enter__()
+        override.__enter__()  # pylint: disable=unnecessary-dunder-call
         cls.__settings_overrides.append(override)
         XMODULE_FACTORY_LOCK.enable()
         clear_existing_modulestores()
@@ -511,7 +511,7 @@ class ModuleStoreTestCase(
                    MODULESTORE = mixed_store_config(data_dir, mappings)
                    # ...
 
-        3. Use factories (e.g. `CourseFactory`, `ItemFactory`) to populate
+        3. Use factories (e.g. `CourseFactory`, `BlockFactory`) to populate
            the modulestore with test data.
 
     NOTE:

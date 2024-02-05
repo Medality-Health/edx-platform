@@ -40,7 +40,6 @@ from openedx.core.djangoapps.discussions.config.waffle import (
 )
 from openedx.core.djangoapps.models.course_details import CourseDetails
 from xmodule.fields import Date  # lint-amnesty, pylint: disable=wrong-import-order
-from xmodule.modulestore import ModuleStoreEnum  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.tests.factories import CourseFactory  # lint-amnesty, pylint: disable=wrong-import-order
 
@@ -108,6 +107,12 @@ class CourseAdvanceSettingViewTest(CourseTestCase, MilestonesTestCaseMixin):
         self.fullcourse = CourseFactory.create()
         self.course_setting_url = get_url(self.course.id, 'advanced_settings_handler')
 
+        self.non_staff_client, self.nonstaff = self.create_non_staff_authed_user_client()
+        # "nonstaff" means "non Django staff" here. We assign this user to course staff
+        # role to check that even so they won't have advanced settings access when explicitly
+        # restricted.
+        CourseStaffRole(self.course.id).add_users(self.nonstaff)
+
     @override_settings(FEATURES={'DISABLE_MOBILE_COURSE_AVAILABLE': True})
     def test_mobile_field_available(self):
 
@@ -144,6 +149,51 @@ class CourseAdvanceSettingViewTest(CourseTestCase, MilestonesTestCaseMixin):
                 self.assertEqual('allow_anonymous_to_peers' in response, fields_visible)
                 self.assertEqual('discussion_blackouts' in response, fields_visible)
                 self.assertEqual('discussion_topics' in response, fields_visible)
+
+    @ddt.data(False, True)
+    def test_disable_advanced_settings_feature(self, disable_advanced_settings):
+        """
+        If this feature is enabled, only Django Staff/Superuser should be able to access the "Advanced Settings" page.
+        For non-staff users the "Advanced Settings" tab link should not be visible.
+        """
+        advanced_settings_link_html = f"<a href=\"{self.course_setting_url}\">Advanced Settings</a>".encode('utf-8')
+
+        with override_settings(FEATURES={'DISABLE_ADVANCED_SETTINGS': disable_advanced_settings}):
+            for handler in (
+                'import_handler',
+                'export_handler',
+                'course_team_handler',
+                'course_info_handler',
+                'assets_handler',
+                'tabs_handler',
+                'settings_handler',
+                'grading_handler',
+                'textbooks_list_handler',
+            ):
+                # Test that non-staff users don't see the "Advanced Settings" tab link.
+                response = self.non_staff_client.get_html(
+                    get_url(self.course.id, handler)
+                )
+                self.assertEqual(response.status_code, 200)
+                if disable_advanced_settings:
+                    self.assertNotIn(advanced_settings_link_html, response.content)
+                else:
+                    self.assertIn(advanced_settings_link_html, response.content)
+
+                # Test that staff users see the "Advanced Settings" tab link.
+                response = self.client.get_html(
+                    get_url(self.course.id, handler)
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(advanced_settings_link_html, response.content)
+
+            # Test that non-staff users can't access the "Advanced Settings" page.
+            response = self.non_staff_client.get_html(self.course_setting_url)
+            self.assertEqual(response.status_code, 403 if disable_advanced_settings else 200)
+
+            # Test that staff users can access the "Advanced Settings" page.
+            response = self.client.get_html(self.course_setting_url)
+            self.assertEqual(response.status_code, 200)
 
 
 @ddt.ddt
@@ -482,12 +532,103 @@ class CourseDetailsViewTest(CourseTestCase, MilestonesTestCaseMixin):
         self.assertTrue(course.entrance_exam_enabled)
         self.assertEqual(course.entrance_exam_minimum_score_pct, .5)
 
+    @unittest.skipUnless(settings.FEATURES.get('ENTRANCE_EXAMS', False), True)
+    @mock.patch.dict("django.conf.settings.FEATURES", {'ENABLE_PREREQUISITE_COURSES': True})
+    def test_entrance_after_changing_other_setting(self):
+        """
+        Test entrance exam is not deactivated when prerequisites removed.
+
+        This test ensures that the entrance milestone is not deactivated after
+        course details are saves without pre-requisite courses active.
+
+        The test was implemented after a bug fixing, correcting the behaviour
+        that every time course details were saved,
+        if there wasn't any pre-requisite course in the POST
+        the view just deleted all the pre-requisite courses, including entrance exam,
+        despite the fact that the entrance_exam_enabled was True.
+        """
+        assert not milestones_helpers.any_unfulfilled_milestones(self.course.id, self.user.id), \
+            'The initial empty state should be: no entrance exam'
+
+        settings_details_url = get_url(self.course.id)
+        data = {
+            'entrance_exam_enabled': 'true',
+            'entrance_exam_minimum_score_pct': '60',
+            'syllabus': 'none',
+            'short_description': 'empty',
+            'overview': '',
+            'effort': '',
+            'intro_video': '',
+            'start_date': '2012-01-01',
+            'end_date': '2012-12-31',
+        }
+        response = self.client.post(
+            settings_details_url,
+            data=json.dumps(data),
+            content_type='application/json',
+            HTTP_ACCEPT='application/json'
+        )
+
+        assert response.status_code == 200
+        course = modulestore().get_course(self.course.id)
+        assert course.entrance_exam_enabled
+        assert course.entrance_exam_minimum_score_pct == .60
+
+        assert milestones_helpers.any_unfulfilled_milestones(self.course.id, self.user.id), \
+            'The entrance exam should be required.'
+
+        # Call the settings handler again then ensure it didn't delete the settings of the entrance exam
+        data.update({
+            'start_date': '2018-01-01',
+            'end_date': '{year}-12-31'.format(year=datetime.datetime.now().year + 4),
+        })
+        response = self.client.post(
+            settings_details_url,
+            data=json.dumps(data),
+            content_type='application/json',
+            HTTP_ACCEPT='application/json'
+        )
+        assert response.status_code == 200
+        assert milestones_helpers.any_unfulfilled_milestones(self.course.id, self.user.id), \
+            'The entrance exam should be required.'
+
     def test_editable_short_description_fetch(self):
         settings_details_url = get_url(self.course.id)
 
         with mock.patch.dict('django.conf.settings.FEATURES', {'EDITABLE_SHORT_DESCRIPTION': False}):
             response = self.client.get_html(settings_details_url)
             self.assertNotContains(response, "Course Short Description")
+
+    def test_empty_course_overview_keep_default_value(self):
+        """
+        Test saving the course with an empty course overview.
+
+        If the overview is empty - the save method should use the default
+        value for the field.
+        """
+        settings_details_url = get_url(self.course.id)
+
+        # add overview with empty value in json request.
+        test_data = {
+            'syllabus': 'none',
+            'short_description': 'test',
+            'overview': '',
+            'effort': '',
+            'intro_video': '',
+            'start_date': '2022-01-01',
+            'end_date': '2022-12-31',
+        }
+
+        response = self.client.post(
+            settings_details_url,
+            data=json.dumps(test_data),
+            content_type='application/json',
+            HTTP_ACCEPT='application/json'
+        )
+        course_details = CourseDetails.fetch(self.course.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(course_details.overview, '<p>&nbsp;</p>')
 
     def test_regular_site_fetch(self):
         settings_details_url = get_url(self.course.id)
@@ -542,10 +683,9 @@ class CourseGradingTest(CourseTestCase):
     @mock.patch('common.djangoapps.track.event_transaction_utils.uuid4')
     @mock.patch('cms.djangoapps.models.settings.course_grading.tracker')
     @mock.patch('cms.djangoapps.contentstore.signals.signals.GRADING_POLICY_CHANGED.send')
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_update_from_json(self, store, send_signal, tracker, uuid):
+    def test_update_from_json(self, send_signal, tracker, uuid):
         uuid.return_value = "mockUUID"
-        self.course = CourseFactory.create(default_store=store)
+        self.course = CourseFactory.create()
         test_grader = CourseGradingModel.fetch(self.course.id)
         # there should be no event raised after this call, since nothing got modified
         altered_grader = CourseGradingModel.update_from_json(self.course.id, test_grader.__dict__, self.user)
@@ -600,14 +740,13 @@ class CourseGradingTest(CourseTestCase):
             )
         ])
 
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_must_fire_grading_event_and_signal_multiple_type(self, store):
+    def test_must_fire_grading_event_and_signal_multiple_type(self):
         """
         Verifies that 'must_fire_grading_event_and_signal' ignores (returns False) if we modify
         short_label and or name
         use test_must_fire_grading_event_and_signal_multiple_type_2_split to run this test only
         """
-        self.course = CourseFactory.create(default_store=store)
+        self.course = CourseFactory.create()
         # .raw_grader approximates what our UI sends down. It uses decimal representation of percent
         # without it, the  weights would be percentages
         raw_grader_list = modulestore().get_course(self.course.id).raw_grader
@@ -626,14 +765,13 @@ class CourseGradingTest(CourseTestCase):
         self.assertTrue(result)
 
     @override_waffle_flag(MATERIAL_RECOMPUTE_ONLY_FLAG, True)
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_must_fire_grading_event_and_signal_multiple_type_waffle_on(self, store):
+    def test_must_fire_grading_event_and_signal_multiple_type_waffle_on(self):
         """
         Verifies that 'must_fire_grading_event_and_signal' ignores (returns False) if we modify
         short_label and or name
         use test_must_fire_grading_event_and_signal_multiple_type_2_split to run this test only
         """
-        self.course = CourseFactory.create(default_store=store)
+        self.course = CourseFactory.create()
         # .raw_grader approximates what our UI sends down. It uses decimal representation of percent
         # without it, the  weights would be percentages
         raw_grader_list = modulestore().get_course(self.course.id).raw_grader
@@ -651,14 +789,13 @@ class CourseGradingTest(CourseTestCase):
         )
         self.assertFalse(result)
 
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_must_fire_grading_event_and_signal_return_true(self, store):
+    def test_must_fire_grading_event_and_signal_return_true(self):
         """
         Verifies that 'must_fire_grading_event_and_signal' ignores (returns False) if we modify
         short_label and or name
         use _2_split suffix to run this test only
         """
-        self.course = CourseFactory.create(default_store=store)
+        self.course = CourseFactory.create()
         # .raw_grader approximates what our UI sends down. It uses decimal representation of percent
         # without it, the  weights would be percentages
         raw_grader_list = modulestore().get_course(self.course.id).raw_grader

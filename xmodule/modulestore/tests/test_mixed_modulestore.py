@@ -15,6 +15,9 @@ from uuid import uuid4
 from unittest.mock import Mock, call, patch
 
 import ddt
+from openedx_events.content_authoring.data import XBlockData
+from openedx_events.content_authoring.signals import XBLOCK_DELETED, XBLOCK_PUBLISHED
+from openedx_events.tests.utils import OpenEdxEventsTestMixin
 import pymongo
 import pytest
 # Mixed modulestore depends on django, so we'll manually configure some django settings
@@ -63,7 +66,7 @@ if not settings.configured:
 log = logging.getLogger(__name__)
 
 
-class CommonMixedModuleStoreSetup(CourseComparisonTest):
+class CommonMixedModuleStoreSetup(CourseComparisonTest, OpenEdxEventsTestMixin):
     """
     Quasi-superclass which tests Location based apps against both split and mongo dbs (Locator and
     Location-based dbs)
@@ -74,7 +77,7 @@ class CommonMixedModuleStoreSetup(CourseComparisonTest):
     COLLECTION = 'modulestore'
     ASSET_COLLECTION = 'assetstore'
     FS_ROOT = DATA_DIR
-    DEFAULT_CLASS = 'xmodule.hidden_module.HiddenDescriptor'
+    DEFAULT_CLASS = 'xmodule.hidden_block.HiddenBlock'
     RENDER_TEMPLATE = lambda t_n, d, ctx=None, nsp='main': ''
 
     MONGO_COURSEID = 'MITx/999/2013_Spring'
@@ -109,6 +112,20 @@ class CommonMixedModuleStoreSetup(CourseComparisonTest):
         ],
         'xblock_mixins': modulestore_options['xblock_mixins'],
     }
+    ENABLED_OPENEDX_EVENTS = [
+        "org.openedx.content_authoring.xblock.deleted.v1",
+        "org.openedx.content_authoring.xblock.published.v1",
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Set up class method for the Test class.
+        This method starts manually events isolation. Explanation here:
+        openedx/core/djangoapps/user_authn/views/tests/test_events.py#L44
+        """
+        super().setUpClass()
+        cls.start_events_isolation()
 
     def setUp(self):
         """
@@ -418,8 +435,8 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
 
         course_locn = self.course_locations[self.MONGO_COURSEID]
         with check_mongo_calls(max_find, max_send), self.assertNumQueries(num_mysql):
-            modules = self.store.get_items(course_locn.course_key, qualifiers={'category': 'problem'})
-        assert len(modules) == 6
+            blocks = self.store.get_items(course_locn.course_key, qualifiers={'category': 'problem'})
+        assert len(blocks) == 6
 
         # verify that an error is raised when the revision is not valid
         with pytest.raises(UnsupportedRevisionError):
@@ -448,7 +465,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
             assert block.course_version == course_version
             # ensure that when the block is retrieved from the runtime cache,
             # the course version is still present
-            cached_block = course.runtime.load_item(block.location)
+            cached_block = course.runtime.get_block(block.location)
             assert cached_block.course_version == block.course_version
 
     @ddt.data((ModuleStoreEnum.Type.split, 2, False), (ModuleStoreEnum.Type.mongo, 3, True))
@@ -518,7 +535,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
     #    mysql: SplitModulestoreCourseIndex - select 2x (by course_id, by objectid), update, update historical record
     #    find: definitions (calculator field), structures
     #    sends: 2 sends to update index & structure (note, it would also be definition if a content field changed)
-    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 7, 5), (ModuleStoreEnum.Type.split, 3, 2, 2))
+    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 6, 5), (ModuleStoreEnum.Type.split, 3, 2, 2))
     @ddt.unpack
     def test_update_item(self, default_ms, num_mysql, max_find, max_send):
         """
@@ -724,6 +741,71 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
         self.store.delete_item(vertical.location, self.user_id)
         assert not self._has_changes(sequential.location)
 
+    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
+    def test_xblock_publish_event(self, default_ms):
+        """
+        Check that XBLOCK_PUBLISHED event is sent when xblock is published.
+        """
+        self.initdb(default_ms)
+        event_receiver = Mock()
+        XBLOCK_PUBLISHED.connect(event_receiver)
+
+        test_course = self.store.create_course('test_org', 'test_course', 'test_run', self.user_id)
+
+        # create sequential and vertical to test against
+        sequential = self.store.create_child(self.user_id, test_course.location, 'sequential', 'test_sequential')
+        self.store.create_child(self.user_id, sequential.location, 'vertical', 'test_vertical')
+
+        # publish sequential changes
+        self.store.publish(sequential.location, self.user_id)
+
+        event_receiver.assert_called()
+        self.assertDictContainsSubset(
+            {
+                "signal": XBLOCK_PUBLISHED,
+                "sender": None,
+                "xblock_info": XBlockData(
+                    usage_key=sequential.location,
+                    block_type=sequential.location.block_type,
+                ),
+            },
+            event_receiver.call_args.kwargs
+        )
+
+    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
+    def test_xblock_delete_event(self, default_ms):
+        """
+        Check that XBLOCK_DELETED event is sent when xblock is deleted.
+        """
+        self.initdb(default_ms)
+        event_receiver = Mock()
+        XBLOCK_DELETED.connect(event_receiver)
+
+        test_course = self.store.create_course('test_org', 'test_course', 'test_run', self.user_id)
+
+        # create sequential and vertical to test against
+        sequential = self.store.create_child(self.user_id, test_course.location, 'sequential', 'test_sequential')
+        vertical = self.store.create_child(self.user_id, sequential.location, 'vertical', 'test_vertical')
+
+        # publish sequential changes
+        self.store.publish(sequential.location, self.user_id)
+
+        # delete vertical
+        self.store.delete_item(vertical.location, self.user_id)
+
+        event_receiver.assert_called()
+        self.assertDictContainsSubset(
+            {
+                "signal": XBLOCK_DELETED,
+                "sender": None,
+                "xblock_info": XBlockData(
+                    usage_key=vertical.location,
+                    block_type=vertical.location.block_type,
+                ),
+            },
+            event_receiver.call_args.kwargs
+        )
+
     def setup_has_changes(self, default_ms):
         """
         Common set up for has_changes tests below.
@@ -913,7 +995,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
     #   mysql: SplitModulestoreCourseIndex - select 2x (by course_id, by objectid), update, update historical record
     #   Find: active_versions, 2 structures (published & draft), definition (unnecessary)
     #   Sends: updated draft and published structures and active_versions
-    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 7, 2), (ModuleStoreEnum.Type.split, 4, 2, 3))
+    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 6, 2), (ModuleStoreEnum.Type.split, 4, 2, 3))
     @ddt.unpack
     def test_delete_item(self, default_ms, num_mysql, max_find, max_send):
         """
@@ -942,7 +1024,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
     #    mysql: SplitModulestoreCourseIndex - select 2x (by course_id, by objectid), update, update historical record
     #    find: draft and published structures, definition (unnecessary)
     #    sends: update published (why?), draft, and active_versions
-    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 9, 2), (ModuleStoreEnum.Type.split, 4, 3, 3))
+    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 8, 2), (ModuleStoreEnum.Type.split, 4, 3, 3))
     @ddt.unpack
     def test_delete_private_vertical(self, default_ms, num_mysql, max_find, max_send):
         """
@@ -996,7 +1078,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
     #   mysql: SplitModulestoreCourseIndex - select 2x (by course_id, by objectid), update, update historical record
     #   find: structure (cached)
     #   send: update structure and active_versions
-    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 4, 1), (ModuleStoreEnum.Type.split, 4, 1, 2))
+    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 3, 1), (ModuleStoreEnum.Type.split, 4, 1, 2))
     @ddt.unpack
     def test_delete_draft_vertical(self, default_ms, num_mysql, max_find, max_send):
         """
@@ -1039,7 +1121,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
     #          executed twice, possibly unnecessarily)
     #   find: 2 reads of structure, definition (s/b lazy; so, unnecessary),
     #         plus 1 wildcard find in draft mongo which has none
-    @ddt.data((ModuleStoreEnum.Type.mongo, 1, 2, 0), (ModuleStoreEnum.Type.split, 2, 3, 0))
+    @ddt.data((ModuleStoreEnum.Type.mongo, 1, 3, 0), (ModuleStoreEnum.Type.split, 2, 3, 0))
     @ddt.unpack
     def test_get_courses(self, default_ms, num_mysql, max_find, max_send):
         self.initdb(default_ms)
@@ -1079,7 +1161,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
 
     # draft is 2: find out which ms owns course, get item
     # split: active_versions (mysql), structure, definition (to load course wiki string)
-    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 2, 0), (ModuleStoreEnum.Type.split, 1, 2, 0))
+    @ddt.data((ModuleStoreEnum.Type.mongo, 0, 3, 0), (ModuleStoreEnum.Type.split, 1, 2, 0))
     @ddt.unpack
     def test_get_course(self, default_ms, num_mysql, max_find, max_send):
         """
@@ -1634,7 +1716,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
     #    8-9. get vertical, compute inheritance
     #    10-11. get other vertical_x1b (why?) and compute inheritance
     # Split: loading structure from mongo (also loads active version from MySQL, not tracked here)
-    @ddt.data((ModuleStoreEnum.Type.mongo, [0, 0], [12, 3], 0), (ModuleStoreEnum.Type.split, [1, 0], [2, 1], 0))
+    @ddt.data((ModuleStoreEnum.Type.mongo, [0, 0], [15, 3], 0), (ModuleStoreEnum.Type.split, [1, 0], [2, 1], 0))
     @ddt.unpack
     def test_path_to_location(self, default_ms, num_mysql, num_finds, num_sends):
         """
@@ -2460,7 +2542,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
 
         # verify store used for creating a course
         course = self.store.create_course("org", "course{}".format(uuid4().hex[:5]), "run", self.user_id)
-        assert course.system.modulestore.get_modulestore_type() == store_type
+        assert course.runtime.modulestore.get_modulestore_type() == store_type
 
     @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
     def test_default_store(self, default_ms):
@@ -2676,7 +2758,7 @@ class TestMixedModuleStore(CommonMixedModuleStoreSetup):
                 # Note: The signal is fired once when the course is created and
                 # a second time after the actual data import.
                 import_course_from_xml(
-                    self.store, self.user_id, DATA_DIR, ['toy'], load_error_modules=False,
+                    self.store, self.user_id, DATA_DIR, ['toy'], load_error_blocks=False,
                     static_content_store=contentstore,
                     create_if_not_present=True,
                 )
@@ -3345,7 +3427,7 @@ class TestPublishOverExportImport(CommonMixedModuleStoreSetup):
                 dest_course_key = self.store.make_course_key('edX', "aside_test", "2012_Fall")
                 courses = import_course_from_xml(
                     self.store, self.user_id, DATA_DIR, ['aside'],
-                    load_error_modules=False,
+                    load_error_blocks=False,
                     static_content_store=contentstore,
                     target_id=dest_course_key,
                     create_if_not_present=True,
@@ -3421,7 +3503,7 @@ class TestPublishOverExportImport(CommonMixedModuleStoreSetup):
                     self.user_id,
                     DATA_DIR,
                     ['aside'],
-                    load_error_modules=False,
+                    load_error_blocks=False,
                     static_content_store=contentstore,
                     target_id=dest_course_key,
                     create_if_not_present=True,
@@ -3508,7 +3590,7 @@ class TestPublishOverExportImport(CommonMixedModuleStoreSetup):
                     self.user_id,
                     DATA_DIR,
                     ['aside'],
-                    load_error_modules=False,
+                    load_error_blocks=False,
                     static_content_store=contentstore,
                     target_id=dest_course_key,
                     create_if_not_present=True,

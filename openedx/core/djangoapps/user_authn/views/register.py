@@ -28,7 +28,7 @@ from openedx_events.learning.data import UserData, UserPersonalData
 from openedx_events.learning.signals import STUDENT_REGISTRATION_COMPLETED
 from openedx_filters.learning.filters import StudentRegistrationRequested
 from pytz import UTC
-from ratelimit.decorators import ratelimit
+from django_ratelimit.decorators import ratelimit
 from requests import HTTPError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -200,10 +200,9 @@ def create_account_with_params(request, params):  # pylint: disable=too-many-sta
         set_custom_attribute('register_user_tpa', pipeline.running(request))
     extended_profile_fields = configuration_helpers.get_value('extended_profile_fields', [])
     # Can't have terms of service for certain SHIB users, like at Stanford
-    registration_fields = getattr(settings, 'REGISTRATION_EXTRA_FIELDS', {})
     tos_required = (
-        registration_fields.get('terms_of_service') != 'hidden' or
-        registration_fields.get('honor_code') != 'hidden'
+        extra_fields.get('terms_of_service') != 'hidden' or
+        extra_fields.get('honor_code') != 'hidden'
     )
 
     form = AccountCreationForm(
@@ -545,7 +544,7 @@ class RegistrationView(APIView):
                             content_type="application/json")
 
     @method_decorator(csrf_exempt)
-    @method_decorator(ratelimit(key=REAL_IP_KEY, rate=settings.REGISTRATION_RATELIMIT, method='POST'))
+    @method_decorator(ratelimit(key=REAL_IP_KEY, rate=settings.REGISTRATION_RATELIMIT, method='POST', block=False))
     def post(self, request):
         """Create the user's account.
 

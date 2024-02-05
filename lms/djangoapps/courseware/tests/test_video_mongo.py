@@ -41,19 +41,20 @@ from xmodule.modulestore.inheritance import own_metadata
 from xmodule.modulestore.tests.django_utils import TEST_DATA_MONGO_MODULESTORE, TEST_DATA_SPLIT_MODULESTORE
 from xmodule.tests.test_import import DummySystem
 from xmodule.tests.test_video import VideoBlockTestBase
-from xmodule.video_module import VideoBlock, bumper_utils, video_utils
-from xmodule.video_module.transcripts_utils import Transcript, save_to_store, subs_filename
-from xmodule.video_module.video_module import EXPORT_IMPORT_COURSE_DIR, EXPORT_IMPORT_STATIC_DIR
+from xmodule.video_block import VideoBlock, bumper_utils, video_utils
+from xmodule.video_block.transcripts_utils import Transcript, save_to_store, subs_filename
+from xmodule.video_block.video_block import EXPORT_IMPORT_COURSE_DIR, EXPORT_IMPORT_STATIC_DIR
 from xmodule.x_module import PUBLIC_VIEW, STUDENT_VIEW
 
 from common.djangoapps.xblock_django.constants import ATTR_KEY_REQUEST_COUNTRY_CODE
 from lms.djangoapps.courseware.tests.helpers import get_context_dict_from_string
+from openedx.core.djangoapps.video_config.toggles import PUBLIC_VIDEO_SHARE
 from openedx.core.djangoapps.video_pipeline.config.waffle import DEPRECATE_YOUTUBE
 from openedx.core.djangoapps.waffle_utils.models import WaffleFlagCourseOverrideModel
 from openedx.core.djangolib.testing.utils import CacheIsolationTestCase
 
 from .test_video_handlers import BaseTestVideoXBlock, TestVideo
-from .test_video_xml import SOURCE_XML
+from .test_video_xml import SOURCE_XML, PUBLIC_SOURCE_XML
 
 MODULESTORES = {
     ModuleStoreEnum.Type.mongo: TEST_DATA_MONGO_MODULESTORE,
@@ -91,7 +92,9 @@ class TestVideoYouTube(TestVideo):  # lint-amnesty, pylint: disable=missing-clas
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
             'id': self.item_descriptor.location.html_id(),
+            'is_embed': False,
             'metadata': json.dumps(OrderedDict({
                 'autoAdvance': False,
                 'saveStateEnabled': True,
@@ -130,6 +133,7 @@ class TestVideoYouTube(TestVideo):  # lint-amnesty, pylint: disable=missing-clas
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
             'poster': 'null',
+            'public_video_url': None,
         }
 
         mako_service = self.item_descriptor.xmodule_runtime.service(self.item_descriptor, 'mako')
@@ -172,6 +176,8 @@ class TestVideoNonYouTube(TestVideo):  # pylint: disable=test-inherits-tests
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
+            'is_embed': False,
             'id': self.item_descriptor.location.html_id(),
             'metadata': json.dumps(OrderedDict({
                 'autoAdvance': False,
@@ -211,6 +217,7 @@ class TestVideoNonYouTube(TestVideo):  # pylint: disable=test-inherits-tests
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
             'poster': 'null',
+            'public_video_url': None,
         }
 
         mako_service = self.item_descriptor.xmodule_runtime.service(self.item_descriptor, 'mako')
@@ -220,6 +227,32 @@ class TestVideoNonYouTube(TestVideo):  # pylint: disable=test-inherits-tests
         assert get_context_dict_from_string(context) == expected_result
         assert expected_result['download_video_link'] == 'example.mp4'
         assert expected_result['display_name'] == 'A Name'
+
+
+@ddt.ddt
+class TestVideoPublicAccess(BaseTestVideoXBlock):
+    """Test video public access."""
+    DATA = PUBLIC_SOURCE_XML
+    MODEL_DATA = {
+        'data': DATA,
+    }
+    METADATA = {}
+
+    @ddt.data(
+        (True, False),
+        (False, False),
+        (True, True),
+    )
+    @ddt.unpack
+    def test_public_video_url(self, is_lms_platform, enable_public_share):
+        """Test public video url."""
+        assert self.item_descriptor.public_access is True
+        with patch.object(self.item_descriptor, '_is_lms_platform', return_value=is_lms_platform), \
+                patch.object(PUBLIC_VIDEO_SHARE, 'is_enabled', return_value=enable_public_share):
+            context = self.item_descriptor.render(STUDENT_VIEW).content
+            # public video url iif PUBLIC_VIDEO_SHARE waffle and is_lms_platform, public_access are true
+            assert bool(get_context_dict_from_string(context)['public_video_url']) \
+                is (is_lms_platform and enable_public_share)
 
 
 @ddt.ddt
@@ -341,7 +374,9 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
             'id': self.item_descriptor.location.html_id(),
+            'is_embed': False,
             'metadata': '',
             'track': None,
             'transcript_download_format': 'srt',
@@ -350,6 +385,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
             'poster': 'null',
+            'public_video_url': None,
         }
 
         for data in cases:
@@ -459,7 +495,9 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
             'id': self.item_descriptor.location.html_id(),
+            'is_embed': False,
             'metadata': self.default_metadata_dict,
             'track': None,
             'transcript_download_format': 'srt',
@@ -468,6 +506,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
             'poster': 'null',
+            'public_video_url': None,
         }
         initial_context['metadata']['duration'] = None
 
@@ -584,6 +623,8 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
+            'is_embed': False,
             'id': self.item_descriptor.location.html_id(),
             'track': None,
             'transcript_download_format': 'srt',
@@ -592,6 +633,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
             'poster': 'null',
+            'public_video_url': None,
             'metadata': metadata
         }
 
@@ -755,6 +797,8 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
+            'is_embed': False,
             'id': self.item_descriptor.location.html_id(),
             'track': None,
             'transcript_download_format': 'srt',
@@ -763,6 +807,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
             'poster': 'null',
+            'public_video_url': None,
             'metadata': metadata,
         }
 
@@ -794,8 +839,8 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
         return context, expected_context
 
     # pylint: disable=invalid-name
-    @patch('xmodule.video_module.video_module.BrandingInfoConfig')
-    @patch('xmodule.video_module.video_module.rewrite_video_url')
+    @patch('xmodule.video_block.video_block.BrandingInfoConfig')
+    @patch('xmodule.video_block.video_block.rewrite_video_url')
     def test_get_html_cdn_source(self, mocked_get_video, mock_BrandingInfoConfig):
         """
         Test if sources got from CDN
@@ -866,6 +911,8 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'display_name': 'A Name',
             'download_video_link': None,
             'handout': None,
+            'hide_downloads': False,
+            'is_embed': False,
             'id': None,
             'metadata': self.default_metadata_dict,
             'track': None,
@@ -874,6 +921,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                 {'display_name': 'SubRip (.srt) file', 'value': 'srt'},
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
+            'public_video_url': None,
             'poster': 'null',
         }
         initial_context['metadata']['duration'] = None
@@ -960,7 +1008,9 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'display_name': 'A Name',
             'download_video_link': None,
             'handout': None,
+            'hide_downloads': False,
             'id': None,
+            'is_embed': False,
             'metadata': self.default_metadata_dict,
             'track': None,
             'transcript_download_format': 'srt',
@@ -968,6 +1018,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                 {'display_name': 'SubRip (.srt) file', 'value': 'srt'},
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
+            'public_video_url': None,
             'poster': 'null',
         }
         initial_context['metadata']['duration'] = None
@@ -1021,14 +1072,14 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
         """
         Verify val profiles on toggling HLS Playback feature.
         """
-        with patch('xmodule.video_module.video_module.edxval_api.get_urls_for_profiles') as get_urls_for_profiles:
+        with patch('xmodule.video_block.video_block.edxval_api.get_urls_for_profiles') as get_urls_for_profiles:
             get_urls_for_profiles.return_value = {
                 'desktop_webm': 'https://webm.com/dw.webm',
                 'hls': 'https://hls.com/hls.m3u8',
                 'youtube': 'https://yt.com/?v=v0TFmdO4ZP0',
                 'desktop_mp4': 'https://mp4.com/dm.mp4'
             }
-            with patch('xmodule.video_module.video_module.HLSPlaybackEnabledFlag.feature_enabled') as feature_enabled:
+            with patch('xmodule.video_block.video_block.HLSPlaybackEnabledFlag.feature_enabled') as feature_enabled:
                 feature_enabled.return_value = hls_feature_enabled
                 video_xml = '<video display_name="Video" download_video="true" edx_video_id="12345-67890">[]</video>'
                 self.initialize_block(data=video_xml)
@@ -1038,8 +1089,8 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
                     expected_val_profiles,
                 )
 
-    @patch('xmodule.video_module.video_module.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
-    @patch('xmodule.video_module.video_module.edxval_api.get_urls_for_profiles')
+    @patch('xmodule.video_block.video_block.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
+    @patch('xmodule.video_block.video_block.edxval_api.get_urls_for_profiles')
     def test_get_html_hls(self, get_urls_for_profiles):
         """
         Verify that hls profile functionality works as expected.
@@ -1078,6 +1129,22 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
         context = self.item_descriptor.render(STUDENT_VIEW).content
         assert "'download_video_link': None" in context
 
+    def test_get_html_non_hls_video_download(self):
+        """
+        Verify that `download_video_link` is available if a non HLS videos is available
+        """
+        video_xml = """
+        <video display_name="Video" download_video="true">
+            <source src="http://example.com/example.m3u8"/>
+            <source src="http://example.com/example.mp4"/>
+            <source src="http://example.com/example.webm"/>
+        </video>
+        """
+
+        self.initialize_block(data=video_xml)
+        context = self.item_descriptor.render(STUDENT_VIEW).content
+        assert "'download_video_link': 'http://example.com/example.mp4'" in context
+
     def test_html_student_public_view(self):
         """
         Test the student and public views
@@ -1094,7 +1161,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
         context = self.item_descriptor.render(PUBLIC_VIEW).content
         assert '"saveStateEnabled": false' in context
 
-    @patch('xmodule.video_module.video_module.edxval_api.get_course_video_image_url')
+    @patch('xmodule.video_block.video_block.edxval_api.get_course_video_image_url')
     def test_poster_image(self, get_course_video_image_url):
         """
         Verify that poster image functionality works as expected.
@@ -1107,7 +1174,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
 
         assert '"poster": "/media/video-images/poster.png"' in context
 
-    @patch('xmodule.video_module.video_module.edxval_api.get_course_video_image_url')
+    @patch('xmodule.video_block.video_block.edxval_api.get_course_video_image_url')
     def test_poster_image_without_edx_video_id(self, get_course_video_image_url):
         """
         Verify that poster image is set to None and there is no crash when no edx_video_id.
@@ -1120,7 +1187,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
 
         assert "'poster': 'null'" in context
 
-    @patch('xmodule.video_module.video_module.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=False))
+    @patch('xmodule.video_block.video_block.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=False))
     def test_hls_primary_playback_on_toggling_hls_feature(self):
         """
         Verify that `prioritize_hls` is set to `False` if `HLSPlaybackEnabledFlag` is disabled.
@@ -1167,7 +1234,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
             'result': 'false'
         },
     )
-    @patch('xmodule.video_module.video_module.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
+    @patch('xmodule.video_block.video_block.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
     def test_deprecate_youtube_course_waffle_flag(self, data):
         """
         Tests various combinations of a `prioritize_hls` flag being set in waffle and overridden for a course.
@@ -1188,7 +1255,7 @@ class TestGetHtmlMethod(BaseTestVideoXBlock):
 @ddt.ddt
 class TestVideoBlockInitialization(BaseTestVideoXBlock):
     """
-    Make sure that module initialization works correctly.
+    Make sure that block initialization works correctly.
     """
     CATEGORY = "video"
     DATA = SOURCE_XML
@@ -1228,7 +1295,7 @@ class TestVideoBlockInitialization(BaseTestVideoXBlock):
         ),
     )
     @ddt.unpack
-    @patch('xmodule.video_module.video_module.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
+    @patch('xmodule.video_block.video_block.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
     def test_val_encoding_in_context(self, val_video_encodings, video_url):
         """
         Tests that the val encodings correctly override the video url when the edx video id is set and
@@ -1240,7 +1307,7 @@ class TestVideoBlockInitialization(BaseTestVideoXBlock):
         a video component is initialized. Current implementation considers this youtube source as a valid
         external youtube source.
         """
-        with patch('xmodule.video_module.video_module.edxval_api.get_urls_for_profiles') as get_urls_for_profiles:
+        with patch('xmodule.video_block.video_block.edxval_api.get_urls_for_profiles') as get_urls_for_profiles:
             get_urls_for_profiles.return_value = val_video_encodings
             self.initialize_block(
                 data='<video display_name="Video" download_video="true" edx_video_id="12345-67890">[]</video>'
@@ -1269,7 +1336,7 @@ class TestVideoBlockInitialization(BaseTestVideoXBlock):
         ),
     )
     @ddt.unpack
-    @patch('xmodule.video_module.video_module.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
+    @patch('xmodule.video_block.video_block.HLSPlaybackEnabledFlag.feature_enabled', Mock(return_value=True))
     def test_val_encoding_in_context_without_external_youtube_source(self, val_video_encodings, video_url):
         """
         Tests that the val encodings correctly override the video url when the edx video id is set and
@@ -1277,7 +1344,7 @@ class TestVideoBlockInitialization(BaseTestVideoXBlock):
         Accepted order of source priority is:
             VAL's youtube source > external youtube source > hls > mp4 > webm.
         """
-        with patch('xmodule.video_module.video_module.edxval_api.get_urls_for_profiles') as get_urls_for_profiles:
+        with patch('xmodule.video_block.video_block.edxval_api.get_urls_for_profiles') as get_urls_for_profiles:
             get_urls_for_profiles.return_value = val_video_encodings
             # pylint: disable=line-too-long
             self.initialize_block(
@@ -1346,7 +1413,7 @@ class TestEditorSavedMethod(BaseTestVideoXBlock):
         assert isinstance(Transcript.get_asset(item.location, self.file_name), StaticContent)
         assert isinstance(Transcript.get_asset(item.location, 'subs_video.srt.sjson'), StaticContent)
         old_metadata = own_metadata(item)
-        with patch('xmodule.video_module.video_module.manage_video_subtitles_save') as manage_video_subtitles_save:
+        with patch('xmodule.video_block.video_block.manage_video_subtitles_save') as manage_video_subtitles_save:
             item.editor_saved(self.user, old_metadata, None)
             assert not manage_video_subtitles_save.called
 
@@ -1365,14 +1432,14 @@ class TestEditorSavedMethod(BaseTestVideoXBlock):
         item = self.store.get_item(self.item_descriptor.location)
         assert item.edx_video_id == unstripped_video_id
 
-        # Now, modifying and saving the video module should strip the video id.
+        # Now, modifying and saving the video block should strip the video id.
         old_metadata = own_metadata(item)
         item.display_name = 'New display name'
         item.editor_saved(self.user, old_metadata, None)
         assert item.edx_video_id == stripped_video_id
 
     @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    @patch('xmodule.video_module.video_module.edxval_api.get_url_for_profile', Mock(return_value='test_yt_id'))
+    @patch('xmodule.video_block.video_block.edxval_api.get_url_for_profile', Mock(return_value='test_yt_id'))
     def test_editor_saved_with_yt_val_profile(self, default_store):
         """
         Verify editor saved overrides `youtube_id_1_0` when a youtube val profile is there
@@ -1572,7 +1639,7 @@ class TestVideoBlockStudentViewJson(BaseTestVideoXBlock, CacheIsolationTestCase)
         ({'uk': 1, 'de': 1}, 'en-subs', ['de', 'en'], ['en', 'uk', 'de']),
     )
     @ddt.unpack
-    @patch('xmodule.video_module.transcripts_utils.edxval_api.get_available_transcript_languages')
+    @patch('xmodule.video_block.transcripts_utils.edxval_api.get_available_transcript_languages')
     def test_student_view_with_val_transcripts_enabled(self, transcripts, english_sub, val_transcripts,
                                                        expected_transcripts, mock_get_transcript_languages):
         """
@@ -1730,7 +1797,7 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
                 content=ContentFile(TRANSCRIPT_FILE_SRT_DATA)
             )
 
-        # Export the video module into xml
+        # Export the video block into xml
         video_xml = self.descriptor.definition_to_xml(resource_fs=self.file_system)
 
         # Assert `sub` and `transcripts` attribute in the xml
@@ -1767,7 +1834,7 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
         expected = etree.XML(expected_str, parser=parser)
         self.assertXmlEqual(expected, actual)
 
-    @patch('xmodule.video_module.transcripts_utils.get_video_ids_info')
+    @patch('xmodule.video_block.transcripts_utils.get_video_ids_info')
     def test_export_no_video_ids(self, mock_get_video_ids_info):
         """
         Tests export when there is no video id. `export_to_xml` only works in case of video id.
@@ -1786,7 +1853,7 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
         Test that import val data internal works as expected.
         """
         create_profile('mobile')
-        module_system = DummySystem(load_error_modules=True)
+        module_system = DummySystem(load_error_blocks=True)
 
         edx_video_id = 'test_edx_video_id'
         sub_id = '0CzPOIIdUsA'
@@ -1839,9 +1906,10 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
             val_transcript_language_code=val_transcript_language_code,
             val_transcript_provider=val_transcript_provider
         )
+        xml_object = etree.fromstring(xml_data)
         id_generator = Mock()
         id_generator.target_course_id = "test_course_id"
-        video = self.descriptor.from_xml(xml_data, module_system, id_generator)
+        video = self.descriptor.parse_xml(xml_object, module_system, None, id_generator)
 
         assert video.edx_video_id == 'test_edx_video_id'
         video_data = get_video_info(video.edx_video_id)
@@ -1887,13 +1955,14 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
         Test that importing a video with no video id, creates a new external video.
         """
         xml_data = """<video><video_asset></video_asset></video>"""
-        module_system = DummySystem(load_error_modules=True)
+        xml_object = etree.fromstring(xml_data)
+        module_system = DummySystem(load_error_blocks=True)
         id_generator = Mock()
 
         # Verify edx_video_id is empty before.
         assert self.descriptor.edx_video_id == ''
 
-        video = self.descriptor.from_xml(xml_data, module_system, id_generator)
+        video = self.descriptor.parse_xml(xml_object, module_system, None, id_generator)
 
         # Verify edx_video_id is populated after the import.
         assert video.edx_video_id != ''
@@ -1923,7 +1992,8 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
             val_transcript_language_code=val_transcript_language_code,
             val_transcript_provider=val_transcript_provider
         )
-        module_system = DummySystem(load_error_modules=True)
+        xml_object = etree.fromstring(xml_data)
+        module_system = DummySystem(load_error_blocks=True)
         id_generator = Mock()
 
         # Create static directory in import file system and place transcript files inside it.
@@ -1940,7 +2010,7 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
         # Verify edx_video_id is empty before.
         assert self.descriptor.edx_video_id == ''
 
-        video = self.descriptor.from_xml(xml_data, module_system, id_generator)
+        video = self.descriptor.parse_xml(xml_object, module_system, None, id_generator)
 
         # Verify edx_video_id is populated after the import.
         assert video.edx_video_id != ''
@@ -2029,7 +2099,7 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
         edx_video_id = 'test_edx_video_id'
         language_code = 'en'
 
-        module_system = DummySystem(load_error_modules=True)
+        module_system = DummySystem(load_error_blocks=True)
         id_generator = Mock()
 
         # Create static directory in import file system and place transcript files inside it.
@@ -2077,11 +2147,12 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
             xml_data += val_transcripts
 
         xml_data += '</video_asset></video>'
+        xml_object = etree.fromstring(xml_data)
 
         # Verify edx_video_id is empty before import.
         assert self.descriptor.edx_video_id == ''
 
-        video = self.descriptor.from_xml(xml_data, module_system, id_generator)
+        video = self.descriptor.parse_xml(xml_object, module_system, None, id_generator)
 
         # Verify edx_video_id is not empty after import.
         assert video.edx_video_id != ''
@@ -2097,7 +2168,7 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
 
     def test_import_val_data_invalid(self):
         create_profile('mobile')
-        module_system = DummySystem(load_error_modules=True)
+        module_system = DummySystem(load_error_blocks=True)
 
         # Negative file_size is invalid
         xml_data = """
@@ -2107,8 +2178,9 @@ class VideoBlockTest(TestCase, VideoBlockTestBase):
                 </video_asset>
             </video>
         """
+        xml_object = etree.fromstring(xml_data)
         with pytest.raises(ValCannotCreateError):
-            VideoBlock.from_xml(xml_data, module_system, id_generator=Mock())
+            VideoBlock.parse_xml(xml_object, module_system, None, id_generator=Mock())
         with pytest.raises(ValVideoNotFoundError):
             get_video_info("test_edx_video_id")
 
@@ -2122,7 +2194,7 @@ class TestVideoWithBumper(TestVideo):  # pylint: disable=test-inherits-tests
     # Use temporary FEATURES in this test without affecting the original
     FEATURES = dict(settings.FEATURES)
 
-    @patch('xmodule.video_module.bumper_utils.get_bumper_settings')
+    @patch('xmodule.video_block.bumper_utils.get_bumper_settings')
     def test_is_bumper_enabled(self, get_bumper_settings):
         """
         Check that bumper is (not)shown if ENABLE_VIDEO_BUMPER is (False)True
@@ -2146,8 +2218,8 @@ class TestVideoWithBumper(TestVideo):  # pylint: disable=test-inherits-tests
         with override_settings(FEATURES=self.FEATURES):
             assert not bumper_utils.is_bumper_enabled(self.item_descriptor)
 
-    @patch('xmodule.video_module.bumper_utils.is_bumper_enabled')
-    @patch('xmodule.video_module.bumper_utils.get_bumper_settings')
+    @patch('xmodule.video_block.bumper_utils.is_bumper_enabled')
+    @patch('xmodule.video_block.bumper_utils.get_bumper_settings')
     @patch('edxval.api.get_urls_for_profiles')
     def test_bumper_metadata(self, get_url_for_profiles, get_bumper_settings, is_bumper_enabled):
         """
@@ -2193,6 +2265,8 @@ class TestVideoWithBumper(TestVideo):  # pylint: disable=test-inherits-tests
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
+            'is_embed': False,
             'id': self.item_descriptor.location.html_id(),
             'metadata': json.dumps(OrderedDict({
                 'autoAdvance': False,
@@ -2231,6 +2305,7 @@ class TestVideoWithBumper(TestVideo):  # pylint: disable=test-inherits-tests
                 {'display_name': 'SubRip (.srt) file', 'value': 'srt'},
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
+            'public_video_url': None,
             'poster': json.dumps(OrderedDict({
                 'url': 'http://img.youtube.com/vi/ZwkTiUPN0mg/0.jpg',
                 'type': 'youtube'
@@ -2267,6 +2342,8 @@ class TestAutoAdvanceVideo(TestVideo):  # lint-amnesty, pylint: disable=test-inh
             'display_name': 'A Name',
             'download_video_link': 'example.mp4',
             'handout': None,
+            'hide_downloads': False,
+            'is_embed': False,
             'id': self.item_descriptor.location.html_id(),
             'bumper_metadata': 'null',
             'metadata': json.dumps(OrderedDict({
@@ -2310,6 +2387,7 @@ class TestAutoAdvanceVideo(TestVideo):  # lint-amnesty, pylint: disable=test-inh
                 {'display_name': 'SubRip (.srt) file', 'value': 'srt'},
                 {'display_name': 'Text (.txt) file', 'value': 'txt'}
             ],
+            'public_video_url': None,
             'poster': 'null'
         }
         return context

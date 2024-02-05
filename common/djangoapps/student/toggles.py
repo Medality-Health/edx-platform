@@ -23,6 +23,24 @@ def should_show_amplitude_recommendations():
     return ENABLE_AMPLITUDE_RECOMMENDATIONS.is_enabled()
 
 
+# Waffle flag to enable fallback recommendations.
+# .. toggle_name: student.enable_fallback_recommendations
+# .. toggle_implementation: WaffleFlag
+# .. toggle_default: False
+# .. toggle_description: Supports showing fallback recommendation in case of error on amplitude side.
+#                        Currently, fallback recommendations are picked from settings.GENERAL_RECOMMENDATIONS.
+# .. toggle_use_cases: opt_in
+# .. toggle_creation_date: 2023-01-16
+# .. toggle_target_removal_date: None
+# .. toggle_warning: None
+# .. toggle_tickets: VAN-1239
+ENABLE_FALLBACK_RECOMMENDATIONS = WaffleFlag(f'{WAFFLE_FLAG_NAMESPACE}.enable_fallback_recommendations', __name__)
+
+
+def show_fallback_recommendations():
+    return ENABLE_FALLBACK_RECOMMENDATIONS.is_enabled()
+
+
 # Waffle flag to enable 2U Recommendations
 # .. toggle_name: student.enable_2u_recommendations
 # .. toggle_implementation: WaffleFlag
@@ -40,20 +58,20 @@ def should_show_2u_recommendations():
     return ENABLE_2U_RECOMMENDATIONS_ON_DASHBOARD.is_enabled()
 
 
-# Waffle flag to enable redesigned course enrollment confirmation email.
-# .. toggle_name: student.enable_redesign_enrollment_confirmation_email
+# Waffle flag to enable course enrollment confirmation email.
+# .. toggle_name: student.enable_enrollment_confirmation_email
 # .. toggle_implementation: WaffleFlag
 # .. toggle_default: False
-# .. toggle_description: Enable redesign email template only for staff users for testing.
-# .. toggle_use_cases: temporary
+# .. toggle_description: Enable course enrollment email template
+# .. toggle_use_cases: opt_in
 # .. toggle_creation_date: 2022-08-05
 # .. toggle_target_removal_date: None
 # .. toggle_warning: None
-# .. toggle_tickets: VAN-1064
-ENROLLMENT_CONFIRMATION_EMAIL_REDESIGN = WaffleFlag(
-    f'{WAFFLE_FLAG_NAMESPACE}.enable_redesign_enrollment_confirmation_email', __name__
+# .. toggle_tickets: VAN-1129
+ENROLLMENT_CONFIRMATION_EMAIL = WaffleFlag(
+    f'{WAFFLE_FLAG_NAMESPACE}.enable_enrollment_confirmation_email', __name__
 )
 
 
-def should_send_redesign_email():
-    return ENROLLMENT_CONFIRMATION_EMAIL_REDESIGN.is_enabled()
+def should_send_enrollment_email():
+    return ENROLLMENT_CONFIRMATION_EMAIL.is_enabled()

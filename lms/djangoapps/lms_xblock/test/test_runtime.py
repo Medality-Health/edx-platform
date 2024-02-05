@@ -51,8 +51,7 @@ class TestHandlerUrl(TestCase):
         super().setUp()
         self.block = BlockMock(name='block')
         self.runtime = LmsModuleSystem(
-            track_function=Mock(),
-            get_module=Mock(),
+            get_block=Mock(),
             descriptor_runtime=Mock(),
         )
 

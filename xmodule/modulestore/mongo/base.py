@@ -35,12 +35,12 @@ from xblock.fields import Reference, ReferenceList, ReferenceValueDict, Scope, S
 from xblock.runtime import KvsFieldData
 
 from xmodule.assetstore import AssetMetadata, CourseAssetsFromStorage
-from xmodule.course_module import CourseSummary
-from xmodule.error_module import ErrorBlock
+from xmodule.course_block import CourseSummary
+from xmodule.error_block import ErrorBlock
 from xmodule.errortracker import exc_info_to_str, null_error_tracker
 from xmodule.exceptions import HeartbeatFailure
-from xmodule.mako_module import MakoDescriptorSystem
-from xmodule.modulestore import BulkOperationsMixin, BulkOpsRecord, ModuleStoreEnum, ModuleStoreWriteBase
+from xmodule.mako_block import MakoDescriptorSystem
+from xmodule.modulestore import BulkOperationsMixin, ModuleStoreEnum, ModuleStoreWriteBase
 from xmodule.modulestore.draft_and_published import DIRECT_ONLY_CATEGORIES, ModuleStoreDraftAndPublished
 from xmodule.modulestore.edit_info import EditInfoRuntimeMixin
 from xmodule.modulestore.exceptions import DuplicateCourseError, ItemNotFoundError, ReferentialIntegrityError
@@ -167,7 +167,7 @@ class MongoKeyValueStore(InheritanceKeyValueStore):
 
 class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # lint-amnesty, pylint: disable=abstract-method
     """
-    A system that has a cache of module json that it will use to load modules
+    A system that has a cache of block json that it will use to load blocks
     from, with a backup of calling to the underlying modulestore for more data
     """
     def __repr__(self):
@@ -176,12 +176,11 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # li
             str(self.course_id),
             [str(key) for key in self.module_data.keys()],
             self.default_class,
-            [str(key) for key in self.cached_metadata.keys()],
         ))
 
-    def __init__(self, modulestore, course_key, module_data, default_class, cached_metadata, **kwargs):
+    def __init__(self, modulestore, course_key, module_data, default_class, **kwargs):
         """
-        modulestore: the module store that can be used to retrieve additional modules
+        modulestore: the module store that can be used to retrieve additional blocks
 
         course_key: the course for which everything in this runtime will be relative
 
@@ -190,8 +189,6 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # li
 
         default_class: The default_class to use when loading an
             XModuleDescriptor from the module_data
-
-        cached_metadata: the cache for handling inheritance computation. internal use only
 
         resources_fs: a filesystem, as per MakoDescriptorSystem
 
@@ -214,11 +211,10 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # li
         # cdodge: other Systems have a course_id attribute defined. To keep things consistent, let's
         # define an attribute here as well, even though it's None
         self.course_id = course_key
-        self.cached_metadata = cached_metadata
 
     def load_item(self, location, for_parent=None):  # lint-amnesty, pylint: disable=method-hidden
         """
-        Return an XModule instance for the specified location
+        Return an XBlock instance for the specified location
         """
         assert isinstance(location, UsageKey)
 
@@ -231,10 +227,10 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # li
 
         json_data = self.module_data.get(location)
         if json_data is None:
-            module = self.modulestore.get_item(location, using_descriptor_system=self)
-            return module
+            block = self.modulestore.get_item(location, using_descriptor_system=self)
+            return block
         else:
-            # load the module and apply the inherited metadata
+            # load the block and apply the inherited metadata
             try:
                 category = json_data['location']['category']
                 class_ = self.load_block_type(category)
@@ -248,16 +244,7 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # li
                 ]
 
                 parent = None
-                if self.cached_metadata is not None:
-                    # fish the parent out of here if it's available
-                    parent_url = self.cached_metadata.get(str(location), {}).get('parent', {}).get(
-                        ModuleStoreEnum.Branch.published_only if location.branch is None
-                        else ModuleStoreEnum.Branch.draft_preferred
-                    )
-                    if parent_url:
-                        parent = self._convert_reference_to_key(parent_url)
-
-                if not parent and category not in DETACHED_XBLOCK_TYPES.union(['course']):
+                if category not in DETACHED_XBLOCK_TYPES.union(['course']):
                     # try looking it up just-in-time (but not if we're working with a detached block).
                     parent = self.modulestore.get_parent_location(
                         as_published(location),
@@ -282,36 +269,31 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):  # li
 
                 field_data = KvsFieldData(kvs)
                 scope_ids = ScopeIds(None, category, location, location)
-                module = self.construct_xblock_from_class(class_, scope_ids, field_data, for_parent=for_parent)
-                if self.cached_metadata is not None:
-                    # parent container pointers don't differentiate between draft and non-draft
-                    # so when we do the lookup, we should do so with a non-draft location
-                    non_draft_loc = as_published(location)
+                block = self.construct_xblock_from_class(class_, scope_ids, field_data, for_parent=for_parent)
 
-                    # Convert the serialized fields values in self.cached_metadata
-                    # to python values
-                    metadata_to_inherit = self.cached_metadata.get(str(non_draft_loc), {})
-                    inherit_metadata(module, metadata_to_inherit)
+                non_draft_loc = as_published(location)
+                metadata_inheritance_tree = self.modulestore._compute_metadata_inheritance_tree(self.course_id)
+                inherit_metadata(block, metadata_inheritance_tree.get(str(non_draft_loc), {}))
 
-                module._edit_info = json_data.get('edit_info')
+                block._edit_info = json_data.get('edit_info')
 
                 # migrate published_by and published_on if edit_info isn't present
-                if module._edit_info is None:
-                    module._edit_info = {}
+                if block._edit_info is None:
+                    block._edit_info = {}
                     raw_metadata = json_data.get('metadata', {})
                     # published_on was previously stored as a list of time components instead of a datetime
                     if raw_metadata.get('published_date'):
-                        module._edit_info['published_date'] = datetime(
+                        block._edit_info['published_date'] = datetime(
                             *raw_metadata.get('published_date')[0:6]
                         ).replace(tzinfo=UTC)
-                    module._edit_info['published_by'] = raw_metadata.get('published_by')
+                    block._edit_info['published_by'] = raw_metadata.get('published_by')
 
                 for wrapper in self.modulestore.xblock_field_data_wrappers:
-                    module._field_data = wrapper(module, module._field_data)  # pylint: disable=protected-access
+                    block._field_data = wrapper(block, block._field_data)  # pylint: disable=protected-access
 
                 # decache any computed pending field settings
-                module.save()
-                return module
+                block.save()
+                return block
             except Exception:                   # pylint: disable=broad-except
                 log.warning("Failed to load descriptor from %s", json_data, exc_info=True)
                 return ErrorBlock.from_json(
@@ -449,39 +431,16 @@ def as_published(location):
     return location.replace(revision=MongoRevisionKey.published)
 
 
-class MongoBulkOpsRecord(BulkOpsRecord):
-    """
-    Tracks whether there've been any writes per course and disables inheritance generation
-    """
-    def __init__(self):
-        super().__init__()
-        self.dirty = False
-
-
 class MongoBulkOpsMixin(BulkOperationsMixin):
     """
     Mongo bulk operation support
     """
-    _bulk_ops_record_type = MongoBulkOpsRecord
-
-    def _start_outermost_bulk_operation(self, bulk_ops_record, course_key, ignore_case=False):
-        """
-        Prevent updating the meta-data inheritance cache for the given course
-        """
-        # ensure it starts clean
-        bulk_ops_record.dirty = False
 
     def _end_outermost_bulk_operation(self, bulk_ops_record, structure_key):
         """
-        Restart updating the meta-data inheritance cache for the given course or library.
-        Refresh the meta-data inheritance cache now since it was temporarily disabled.
+        The outermost nested bulk_operation call: do the actual end of the bulk operation.
         """
-        dirty = False
-        if bulk_ops_record.dirty:
-            self.refresh_cached_metadata_inheritance_tree(structure_key)
-            dirty = True
-            bulk_ops_record.dirty = False  # brand spanking clean now
-        return dirty
+        return True
 
     def _is_in_bulk_operation(self, course_id, ignore_case=False):  # lint-amnesty, pylint: disable=arguments-differ
         """
@@ -562,7 +521,16 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
 
         if default_class is not None:
             module_path, _, class_name = default_class.rpartition('.')
-            class_ = getattr(import_module(module_path), class_name)
+            try:
+                class_ = getattr(import_module(module_path), class_name)
+            except (ImportError, AttributeError):
+                fallback_module_path = "xmodule.hidden_block"
+                fallback_class_name = "HiddenBlock"
+                log.exception(
+                    "Failed to import the default store class. "
+                    f"Falling back to {fallback_module_path}.{fallback_class_name}"
+                )
+                class_ = getattr(import_module(fallback_module_path), fallback_class_name)
             self.default_class = class_
         else:
             self.default_class = None
@@ -739,62 +707,6 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
 
         return metadata_to_inherit
 
-    def _get_cached_metadata_inheritance_tree(self, course_id, force_refresh=False):
-        '''
-        Compute the metadata inheritance for the course.
-        '''
-        tree = {}
-
-        course_id = self.fill_in_run(course_id)
-        if not force_refresh:
-            # see if we are first in the request cache (if present)
-            if self.request_cache is not None and str(course_id) in self.request_cache.data.get('metadata_inheritance', {}):  # lint-amnesty, pylint: disable=line-too-long
-                return self.request_cache.data['metadata_inheritance'][str(course_id)]
-
-            # then look in any caching subsystem (e.g. memcached)
-            if self.metadata_inheritance_cache_subsystem is not None:
-                tree = self.metadata_inheritance_cache_subsystem.get(str(course_id), {})
-            else:
-                logging.warning(
-                    'Running MongoModuleStore without a metadata_inheritance_cache_subsystem. This is \
-                    OK in localdev and testing environment. Not OK in production.'
-                )
-
-        if not tree:
-            # if not in subsystem, or we are on force refresh, then we have to compute
-            tree = self._compute_metadata_inheritance_tree(course_id)
-
-            # now write out computed tree to caching subsystem (e.g. memcached), if available
-            if self.metadata_inheritance_cache_subsystem is not None:
-                self.metadata_inheritance_cache_subsystem.set(str(course_id), tree)
-
-        # now populate a request_cache, if available. NOTE, we are outside of the
-        # scope of the above if: statement so that after a memcache hit, it'll get
-        # put into the request_cache
-        if self.request_cache is not None:
-            # we can't assume the 'metadatat_inheritance' part of the request cache dict has been
-            # defined
-            if 'metadata_inheritance' not in self.request_cache.data:
-                self.request_cache.data['metadata_inheritance'] = {}
-            self.request_cache.data['metadata_inheritance'][str(course_id)] = tree
-
-        return tree
-
-    def refresh_cached_metadata_inheritance_tree(self, course_id, runtime=None):
-        """
-        Refresh the cached metadata inheritance tree for the org/course combination
-        for location
-
-        If given a runtime, it replaces the cached_metadata in that runtime. NOTE: failure to provide
-        a runtime may mean that some objects report old values for inherited data.
-        """
-        course_id = course_id.for_branch(None)
-        if not self._is_in_bulk_operation(course_id):
-            # below is done for side effects when runtime is None
-            cached_metadata = self._get_cached_metadata_inheritance_tree(course_id, force_refresh=True)
-            if runtime:
-                runtime.cached_metadata = cached_metadata
-
     def _clean_item_data(self, item):
         """
         Renames the '_id' field in item to 'location'
@@ -857,7 +769,7 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         return data
 
     def _load_item(self, course_key, item, data_cache,
-                   apply_cached_metadata=True, using_descriptor_system=None, for_parent=None):
+                   using_descriptor_system=None, for_parent=None):
         """
         Load an XModuleDescriptor from item, using the children stored in data_cache
 
@@ -868,8 +780,6 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
                 data_dir (optional): The directory name to use as the root data directory for this XModule
             data_cache (dict): A dictionary mapping from UsageKeys to xblock field data
                 (this is the xblock data loaded from the database)
-            apply_cached_metadata (bool): Whether to use the cached metadata for inheritance
-                purposes.
             using_descriptor_system (CachingDescriptorSystem): The existing CachingDescriptorSystem
                 to add data to, and to load the XBlocks from.
             for_parent (:class:`XBlock`): The parent of the XBlock being loaded.
@@ -879,10 +789,6 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         data_dir = getattr(item, 'data_dir', location.course)
         root = self.fs_root / data_dir
         resource_fs = _OSFS_INSTANCE.setdefault(root, OSFS(root, create=True))
-
-        cached_metadata = {}
-        if apply_cached_metadata:
-            cached_metadata = self._get_cached_metadata_inheritance_tree(course_key)
 
         if using_descriptor_system is None:
             services = {}
@@ -909,7 +815,6 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
                 resources_fs=resource_fs,
                 error_tracker=self.error_tracker,
                 render_template=self.render_template,
-                cached_metadata=cached_metadata,
                 mixins=self.xblock_mixins,
                 select=self.xblock_select,
                 disabled_xblock_types=self.disabled_xblock_types,
@@ -918,9 +823,8 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         else:
             system = using_descriptor_system
             system.module_data.update(data_cache)
-            system.cached_metadata.update(cached_metadata)
 
-        item = system.load_item(location, for_parent=for_parent)
+        item = system.get_block(location, for_parent=for_parent)
 
         # TODO Once TNL-5092 is implemented, we can remove the following line
         # of code. Until then, set the course_version field on the block to be
@@ -931,7 +835,7 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
 
     def _load_items(self, course_key, items, depth=0, using_descriptor_system=None, for_parent=None):
         """
-        Load a list of xmodules from the data in items, with children cached up
+        Load a list of xblocks from the data in items, with children cached up
         to specified depth
         """
         course_key = self.fill_in_run(course_key)
@@ -945,21 +849,10 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
                 item,
                 data_cache,
                 using_descriptor_system=using_descriptor_system,
-                apply_cached_metadata=self._should_apply_cached_metadata(item, depth),
                 for_parent=for_parent,
             )
             for item in items
         ]
-
-    def _should_apply_cached_metadata(self, item, depth):
-        """
-        Returns a boolean whether a particular query should trigger an application
-        of inherited metadata onto the item
-        """
-        category = item['location']['category']
-        apply_cached_metadata = category not in DETACHED_XBLOCK_TYPES and \
-            not (category == 'course' and depth == 0)
-        return apply_cached_metadata
 
     @autoretry_read()
     def get_course_summaries(self, **kwargs):
@@ -1148,21 +1041,21 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         Arguments:
             usage_key: a :class:`.UsageKey` instance
             depth (int): An argument that some module stores may use to prefetch
-                descendents of the queried modules for more efficient results later
+                descendents of the queried blocks for more efficient results later
                 in the request. The depth is counted in the number of
                 calls to get_children() to cache. None indicates to cache all descendents.
             using_descriptor_system (CachingDescriptorSystem): The existing CachingDescriptorSystem
                 to add data to, and to load the XBlocks from.
         """
         item = self._find_one(usage_key)
-        module = self._load_items(
+        block = self._load_items(
             usage_key.course_key,
             [item],
             depth,
             using_descriptor_system=using_descriptor_system,
             for_parent=for_parent,
         )[0]
-        return module
+        return block
 
     @staticmethod
     def _course_key_to_son(course_id, tag='i4x'):
@@ -1251,12 +1144,12 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
             sort=[SORT_REVISION_FAVOR_DRAFT],
         )
 
-        modules = self._load_items(
+        blocks = self._load_items(
             course_id,
             list(items),
             using_descriptor_system=using_descriptor_system
         )
-        return modules
+        return blocks
 
     def create_course(self, org, course, run, user_id, fields=None, **kwargs):  # lint-amnesty, pylint: disable=arguments-differ
         """
@@ -1306,10 +1199,10 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         metadata=None, definition_data=None, **kwargs
     ):
         """
-        Create the new xblock but don't save it. Returns the new module.
+        Create the new xblock but don't save it. Returns the new block.
 
         :param runtime: if you already have an xblock from the course, the xblock.runtime value
-        :param fields: a dictionary of field names and values for the new xmodule
+        :param fields: a dictionary of field names and values for the new xblock
         """
         if metadata is None:
             metadata = {}
@@ -1345,7 +1238,6 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
                 resources_fs=None,
                 error_tracker=self.error_tracker,
                 render_template=self.render_template,
-                cached_metadata={},
                 mixins=self.xblock_mixins,
                 select=self.xblock_select,
                 services=services,
@@ -1353,7 +1245,7 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         xblock_class = runtime.load_block_type(block_type)
         location = course_key.make_usage_key(block_type, block_id)
         dbmodel = self._create_new_field_data(block_type, location, definition_data, metadata)
-        xmodule = runtime.construct_xblock_from_class(
+        xblock = runtime.construct_xblock_from_class(
             xblock_class,
             # We're loading a descriptor, so student_id is meaningless
             # We also don't have separate notions of definition and usage ids yet,
@@ -1364,10 +1256,10 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         )
         if fields is not None:
             for key, value in fields.items():
-                setattr(xmodule, key, value)
+                setattr(xblock, key, value)
         # decache any pending field settings from init
-        xmodule.save()
-        return xmodule
+        xblock.save()
+        return xblock
 
     def create_item(self, user_id, course_key, block_type, block_id=None, **kwargs):  # lint-amnesty, pylint: disable=arguments-differ
         """
@@ -1376,7 +1268,7 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         Returns the newly created item.
 
         Args:
-            user_id: ID of the user creating and saving the xmodule
+            user_id: ID of the user creating and saving the xblock
             course_key: A :class:`~opaque_keys.edx.CourseKey` identifying which course to create
                 this item in
             block_type: The typo of block to create
@@ -1402,7 +1294,7 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
         Returns the newly created item.
 
         Args:
-            user_id: ID of the user creating and saving the xmodule
+            user_id: ID of the user creating and saving the xblock
             parent_usage_key: a :class:`~opaque_key.edx.UsageKey` identifing the
                 block that this item should be parented under
             block_type: The typo of block to create
@@ -1440,8 +1332,8 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
 
     def _get_course_for_item(self, location, depth=0):
         '''
-        for a given Xmodule, return the course that it belongs to
-        Also we have to assert that this module maps to only one course item - it'll throw an
+        for a given XBlock, return the course that it belongs to
+        Also we have to assert that this block maps to only one course item - it'll throw an
         assert if not
         '''
         return self.get_course(location.course_key, depth)
@@ -1532,9 +1424,6 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
 
             # update the edit info of the instantiated xblock
             xblock._edit_info = payload['edit_info']
-
-            # recompute (and update) the metadata inheritance tree which is cached
-            self.refresh_cached_metadata_inheritance_tree(xblock.scope_ids.usage_id.course_key, xblock.runtime)
             # fire signal that we've written to DB
         except ItemNotFoundError:
             if not allow_not_found:  # lint-amnesty, pylint: disable=no-else-raise
@@ -1742,7 +1631,7 @@ class MongoModuleStore(ModuleStoreDraftAndPublished, ModuleStoreWriteBase, Mongo
 
     def _create_new_field_data(self, _category, _location, definition_data, metadata):
         """
-        To instantiate a new xmodule which will be saved later, set up the dbModel and kvs
+        To instantiate a new xblock which will be saved later, set up the dbModel and kvs
         """
         kvs = MongoKeyValueStore(
             definition_data,

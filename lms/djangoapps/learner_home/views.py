@@ -1,32 +1,43 @@
 """
-Views for the learner dashboard.
+Views for Learner Home
 """
+
 import logging
+from collections import OrderedDict
+
+from completion.exceptions import UnavailableCompletionData
+from completion.utilities import get_key_to_last_completed_block
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.core.exceptions import MultipleObjectsReturned
+from django.urls import reverse
 from edx_django_utils import monitoring as monitoring_utils
+from edx_django_utils.monitoring import function_trace
+from edx_rest_framework_extensions.auth.jwt.authentication import JwtAuthentication
+from edx_rest_framework_extensions.auth.session.authentication import (
+    SessionAuthenticationAllowInactiveUser,
+)
+from edx_rest_framework_extensions.permissions import NotJwtRestrictedApplication
 from opaque_keys.edx.keys import CourseKey
-from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.generics import RetrieveAPIView
 from rest_framework.views import APIView
 
-from edx_rest_framework_extensions.auth.jwt.authentication import JwtAuthentication
-from edx_rest_framework_extensions.auth.session.authentication import SessionAuthenticationAllowInactiveUser
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.edxmako.shortcuts import marketing_link
-from common.djangoapps.student.helpers import cert_info, get_resume_urls_for_enrollments
-from common.djangoapps.student.models import CourseEnrollment, get_user_by_username_or_email
-from common.djangoapps.student.toggles import should_show_amplitude_recommendations
+from common.djangoapps.student.helpers import (
+    cert_info,
+    user_has_passing_grade_in_course,
+)
 from common.djangoapps.student.views.dashboard import (
     complete_course_mode_info,
+    credit_statuses,
     get_course_enrollments,
-    get_org_black_and_whitelist_for_site,
     get_filtered_course_entitlements,
+    get_org_black_and_whitelist_for_site,
 )
-from common.djangoapps.track import segment
+from common.djangoapps.util.course import (
+    get_encoded_course_sharing_utm_params,
+    get_link_for_about_page,
+)
 from common.djangoapps.util.milestones_helpers import (
     get_pre_requisite_courses_not_completed,
 )
@@ -34,24 +45,29 @@ from lms.djangoapps.bulk_email.models import Optout
 from lms.djangoapps.bulk_email.models_api import is_bulk_email_feature_enabled
 from lms.djangoapps.commerce.utils import EcommerceService
 from lms.djangoapps.courseware.access import administrative_accesses_to_course_for_user
-from lms.djangoapps.courseware.access_utils import (
-    check_course_open_for_learner,
+from lms.djangoapps.courseware.access_utils import check_course_open_for_learner
+from lms.djangoapps.learner_home.serializers import (
+    LearnerDashboardSerializer,
 )
-from lms.djangoapps.learner_home.serializers import LearnerDashboardSerializer
-from lms.djangoapps.learner_home.utils import get_personalized_course_recommendations
+from lms.djangoapps.learner_home.utils import (
+    get_masquerade_user,
+)
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.djangoapps.programs.utils import ProgramProgressMeter
-from openedx.core.djangoapps.catalog.utils import get_course_data
+from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
+from openedx.core.lib.api.authentication import BearerAuthenticationAllowInactiveUser
+from openedx.features.course_duration_limits.access import (
+    get_user_course_expiration_date,
+)
 from openedx.features.enterprise_support.api import (
     enterprise_customer_from_session_or_learner_data,
     get_enterprise_learner_data_from_db,
 )
 
 logger = logging.getLogger(__name__)
-User = get_user_model()
 
 
+@function_trace("get_platform_settings")
 def get_platform_settings():
     """Get settings used for platform level connections: emails, url routes, etc."""
 
@@ -62,6 +78,7 @@ def get_platform_settings():
     }
 
 
+@function_trace("get_user_account_confirmation_info")
 def get_user_account_confirmation_info(user):
     """Determine if a user needs to verify their account and related URL info"""
 
@@ -80,6 +97,7 @@ def get_user_account_confirmation_info(user):
     return email_confirmation
 
 
+@function_trace("get_enrollments")
 def get_enrollments(user, org_allow_list, org_block_list, course_limit=None):
     """Get enrollments and enrollment course modes for user"""
 
@@ -119,6 +137,7 @@ def get_enrollments(user, org_allow_list, org_block_list, course_limit=None):
     return course_enrollments, course_mode_info
 
 
+@function_trace("get_entitlements")
 def get_entitlements(user, org_allow_list, org_block_list):
     """Get entitlements for the user"""
     (
@@ -144,6 +163,7 @@ def get_entitlements(user, org_allow_list, org_block_list):
     )
 
 
+@function_trace("get_course_overviews_for_pseudo_sessions")
 def get_course_overviews_for_pseudo_sessions(unfulfilled_entitlement_pseudo_sessions):
     """
     Get course overviews for entitlement pseudo sessions. This is required for
@@ -155,6 +175,8 @@ def get_course_overviews_for_pseudo_sessions(unfulfilled_entitlement_pseudo_sess
 
     # Get course IDs from unfulfilled entitlement pseudo sessions
     for pseudo_session in unfulfilled_entitlement_pseudo_sessions.values():
+        if not pseudo_session:
+            continue
         course_id = pseudo_session.get("key")
         if course_id:
             course_ids.append(CourseKey.from_string(course_id))
@@ -162,6 +184,7 @@ def get_course_overviews_for_pseudo_sessions(unfulfilled_entitlement_pseudo_sess
     return CourseOverview.get_from_ids(course_ids)
 
 
+@function_trace("get_email_settings_info")
 def get_email_settings_info(user, course_enrollments):
     """
     Given a user and enrollments, determine which courses allow bulk email (show_email_settings_for)
@@ -181,6 +204,7 @@ def get_email_settings_info(user, course_enrollments):
     return show_email_settings_for, course_optouts
 
 
+@function_trace("get_enterprise_customer")
 def get_enterprise_customer(user, request, is_masquerading):
     """
     If we are not masquerading, try to load the enterprise learner from session data, falling back to the db.
@@ -193,6 +217,7 @@ def get_enterprise_customer(user, request, is_masquerading):
         return enterprise_customer_from_session_or_learner_data(request)
 
 
+@function_trace("get_ecommerce_payment_page")
 def get_ecommerce_payment_page(user):
     """Determine the ecommerce payment page URL if enabled for this user"""
     ecommerce_service = EcommerceService()
@@ -203,12 +228,56 @@ def get_ecommerce_payment_page(user):
     )
 
 
+@function_trace("get_cert_statuses")
 def get_cert_statuses(user, course_enrollments):
     """Get cert status by course for user enrollments"""
-    return {
-        enrollment.course_id: cert_info(user, enrollment)
-        for enrollment in course_enrollments
-    }
+
+    cert_statuses = {}
+
+    for enrollment in course_enrollments:
+        # APER-2171 - trying to get a cert for a deleted course can throw an exception
+        # Wrap in exception handling to avoid this issue.
+        try:
+            certificate_for_course = cert_info(user, enrollment)
+
+            if certificate_for_course:
+                cert_statuses[enrollment.course_id] = certificate_for_course
+
+        except Exception as ex:  # pylint: disable=broad-except
+            logger.exception(
+                f"Error getting certificate status for (user, course) ({user}, {enrollment.course_id}): {ex}"
+            )
+
+    return cert_statuses
+
+
+@function_trace("get_org_block_and_allow_lists")
+def get_org_block_and_allow_lists():
+    """Proxy for get_org_black_and_whitelist_for_site to allow for modification / profiling"""
+    return get_org_black_and_whitelist_for_site()
+
+
+@function_trace("get_resume_urls_for_course_enrollments")
+def get_resume_urls_for_course_enrollments(user, course_enrollments):
+    """
+    Modeled off of get_resume_urls_for_enrollments but removes check for actual presence of block
+    in course structure for better performance.
+    """
+    resume_course_urls = OrderedDict()
+    for enrollment in course_enrollments:
+        url_to_block = None
+        try:
+            block_key = get_key_to_last_completed_block(user, enrollment.course_id)
+            if block_key:
+                url_to_block = reverse(
+                    "jump_to",
+                    kwargs={"course_id": enrollment.course_id, "location": block_key},
+                )
+        except UnavailableCompletionData:
+            # This is acceptable, the user hasn't started the course so jump URL will be None
+            pass
+        resume_course_urls[enrollment.course_id] = url_to_block
+    return resume_course_urls
 
 
 def _get_courses_with_unmet_prerequisites(user, course_enrollments):
@@ -231,6 +300,7 @@ def _get_courses_with_unmet_prerequisites(user, course_enrollments):
     return get_pre_requisite_courses_not_completed(user, courses_having_prerequisites)
 
 
+@function_trace("check_course_access")
 def check_course_access(user, course_enrollments):
     """
     Wrapper for checks surrounding user ability to view courseware
@@ -267,12 +337,13 @@ def check_course_access(user, course_enrollments):
     return course_access_dict
 
 
+@function_trace("get_course_programs")
 def get_course_programs(user, course_enrollments, site):
     """
     Get programs related to the courses the user is enrolled in.
 
     Returns: {
-        <course_id>: {
+        str(<course_id>): {
             "programs": [list of programs]
         }
     }
@@ -283,6 +354,7 @@ def get_course_programs(user, course_enrollments, site):
     return meter.invert_programs()
 
 
+@function_trace("get_suggested_courses")
 def get_suggested_courses():
     """
     Currently just returns general recommendations from settings
@@ -296,40 +368,109 @@ def get_suggested_courses():
     )
 
 
-class InitializeView(RetrieveAPIView):  # pylint: disable=unused-argument
+@function_trace("get_social_share_settings")
+def get_social_share_settings():
+    """Config around social media sharing campaigns"""
+
+    share_settings = configuration_helpers.get_value(
+        "SOCIAL_SHARING_SETTINGS", getattr(settings, "SOCIAL_SHARING_SETTINGS", {})
+    )
+
+    utm_sources = get_encoded_course_sharing_utm_params()
+
+    default_brand = "edX.org"
+
+    return {
+        "facebook": {
+            "is_enabled": share_settings.get("DASHBOARD_FACEBOOK", False),
+            "brand": share_settings.get("FACEBOOK_BRAND", default_brand),
+            "utm_params": utm_sources.get("facebook"),
+        },
+        "twitter": {
+            "is_enabled": share_settings.get("DASHBOARD_TWITTER", False),
+            "brand": share_settings.get("TWITTER_BRAND", default_brand),
+            "utm_params": utm_sources.get("twitter"),
+        },
+    }
+
+
+@function_trace("get_course_share_urls")
+def get_course_share_urls(course_enrollments):
+    """Get course URLs for sharing on social media"""
+    return {
+        course_enrollment.course_id: get_link_for_about_page(course_enrollment.course)
+        for course_enrollment in course_enrollments
+    }
+
+
+@function_trace("get_audit_access_deadlines")
+def get_audit_access_deadlines(user, course_enrollments):
+    """
+    Get audit access deadlines for each course enrollment
+
+    Returns:
+    - Dict {course_id: <datetime or None>}
+    """
+    return {
+        course_enrollment.course_id: get_user_course_expiration_date(
+            user, course_enrollment.course
+        )
+        for course_enrollment in course_enrollments
+    }
+
+
+@function_trace("get_user_grade_passing_statuses")
+def get_user_grade_passing_statuses(course_enrollments):
+    """
+    Get "passing" status for user in each course
+
+    Returns:
+    - Dict {course_id: <boolean (True = Passing grade, False = Failing grade)>}
+    """
+    return {
+        course_enrollment.course_id: user_has_passing_grade_in_course(course_enrollment)
+        for course_enrollment in course_enrollments
+    }
+
+
+@function_trace("get_credit_statuses")
+def get_credit_statuses(user, course_enrollments):
+    """
+    Wrapper for getting credit statuses. Credit statuses are already in a
+    format we can use so this is largely for profiling / testing.
+
+    Returns (only for courses with credit options)
+    - Dict {course_id: <credit_status>}
+    """
+    return credit_statuses(user, course_enrollments)
+
+
+@function_trace("serialize_learner_home_data")
+def serialize_learner_home_data(data, context):
+    """Wrapper for serialization so we can profile"""
+    return LearnerDashboardSerializer(data, context=context).data
+
+
+class InitializeView(APIView):  # pylint: disable=unused-argument
     """List of courses a user is enrolled in or entitled to"""
 
+    authentication_classes = (
+        JwtAuthentication,
+        BearerAuthenticationAllowInactiveUser,
+        SessionAuthenticationAllowInactiveUser,
+    )
+    permission_classes = (IsAuthenticated, NotJwtRestrictedApplication)
+
     def get(self, request, *args, **kwargs):  # pylint: disable=unused-argument
-        if request.GET.get("user"):
-            if not request.user.is_staff:
-                logger.info(
-                    f"[Learner Home] {request.user.username} attempted to masquerade but is not staff"
-                )
-                raise PermissionDenied()
+        """Get masquerade user and proxy to init request"""
+        masquerade_user = get_masquerade_user(request)
 
-            masquerade_identifier = request.GET.get("user")
-            try:
-                masquerade_user = get_user_by_username_or_email(masquerade_identifier)
-            except User.DoesNotExist:
-                raise NotFound()  # pylint: disable=raise-missing-from
-            except MultipleObjectsReturned:
-                msg = (
-                    f"[Learner Home] {masquerade_identifier} could refer to multiple learners. "
-                    " Defaulting to username."
-                )
-                logger.info(msg)
-                masquerade_user = User.objects.get(username=masquerade_identifier)
-
-            success_msg = (
-                f"[Learner Home] {request.user.username} masquerades as "
-                f"{masquerade_user.username} - {masquerade_user.email}"
-            )
-            logger.info(success_msg)
-            return self._initialize(masquerade_user, True)
+        if masquerade_user:
+            return self._initialize(masquerade_user, is_masquerade=True)
         else:
-            return self._initialize(request.user, False)
+            return self._initialize(request.user)
 
-    def _initialize(self, user, is_masquerade):
+    def _initialize(self, user, is_masquerade=False):
         """
         Load information required for displaying the learner home
         """
@@ -339,8 +480,14 @@ class InitializeView(RetrieveAPIView):  # pylint: disable=unused-argument
         # Gather info for enterprise dashboard
         enterprise_customer = get_enterprise_customer(user, self.request, is_masquerade)
 
+        # Get site-wide social sharing config
+        social_share_settings = get_social_share_settings()
+
+        # Get platform-level settings
+        platform_settings = get_platform_settings()
+
         # Get the org whitelist or the org blacklist for the current site
-        site_org_whitelist, site_org_blacklist = get_org_black_and_whitelist_for_site()
+        site_org_whitelist, site_org_blacklist = get_org_block_and_allow_lists()
 
         # Get entitlements and course overviews for serializing
         (
@@ -358,10 +505,16 @@ class InitializeView(RetrieveAPIView):  # pylint: disable=unused-argument
             user, site_org_whitelist, site_org_blacklist
         )
 
+        # Get audit access deadlines
+        audit_access_deadlines = get_audit_access_deadlines(user, course_enrollments)
+
         # Get email opt-outs for student
         show_email_settings_for, course_optouts = get_email_settings_info(
             user, course_enrollments
         )
+
+        # Get grade passing status by course
+        grade_statuses = get_user_grade_passing_statuses(course_enrollments)
 
         # Get cert status by course
         cert_statuses = get_cert_statuses(user, course_enrollments)
@@ -376,27 +529,40 @@ class InitializeView(RetrieveAPIView):  # pylint: disable=unused-argument
         ecommerce_payment_page = get_ecommerce_payment_page(user)
 
         # Gather urls for course card resume buttons.
-        resume_button_urls = get_resume_urls_for_enrollments(user, course_enrollments)
+        resume_button_urls = get_resume_urls_for_course_enrollments(
+            user, course_enrollments
+        )
 
         # Get suggested courses
         suggested_courses = get_suggested_courses().get("courses", [])
 
+        # Get social media sharing config
+        course_share_urls = get_course_share_urls(course_enrollments)
+
+        # Get credit availability
+        user_credit_statuses = get_credit_statuses(user, course_enrollments)
+
         learner_dash_data = {
             "emailConfirmation": email_confirmation,
             "enterpriseDashboard": enterprise_customer,
-            "platformSettings": get_platform_settings(),
+            "platformSettings": platform_settings,
             "enrollments": course_enrollments,
             "unfulfilledEntitlements": unfulfilled_entitlements,
+            "socialShareSettings": social_share_settings,
             "suggestedCourses": suggested_courses,
         }
 
         context = {
+            "audit_access_deadlines": audit_access_deadlines,
             "ecommerce_payment_page": ecommerce_payment_page,
             "cert_statuses": cert_statuses,
             "course_mode_info": course_mode_info,
             "course_optouts": course_optouts,
             "course_access_checks": course_access_checks,
+            "credit_statuses": user_credit_statuses,
+            "grade_statuses": grade_statuses,
             "resume_course_urls": resume_button_urls,
+            "course_share_urls": course_share_urls,
             "show_email_settings_for": show_email_settings_for,
             "fulfilled_entitlements": fulfilled_entitlements_by_course_key,
             "course_entitlement_available_sessions": course_entitlement_available_sessions,
@@ -405,62 +571,6 @@ class InitializeView(RetrieveAPIView):  # pylint: disable=unused-argument
             "programs": programs,
         }
 
-        response_data = LearnerDashboardSerializer(
-            learner_dash_data, context=context
-        ).data
+        response_data = serialize_learner_home_data(learner_dash_data, context)
+
         return Response(response_data)
-
-
-class CourseRecommendationApiView(APIView):
-    """
-    **Example Request**
-
-    GET /api/learner_home/recommendation/courses/
-    """
-
-    authentication_classes = (JwtAuthentication, SessionAuthenticationAllowInactiveUser,)
-    permission_classes = (IsAuthenticated,)
-
-    def get(self, request):
-        """ Retrieves course recommendations details of a user in a specified course. """
-        if not should_show_amplitude_recommendations():
-            return Response(status=400)
-
-        user_id = request.user.id
-        is_control, course_keys = get_personalized_course_recommendations(user_id)
-
-        # Emits an event to track student dashboard page visits.
-        segment.track(
-            user_id,
-            'edx.bi.user.recommendations.viewed',
-            {
-                'is_personalized_recommendation': not is_control,
-            }
-        )
-
-        if is_control or not course_keys:
-            return Response(status=400)
-
-        recommended_courses = []
-        user_enrolled_course_keys = set()
-        fields = ['title', 'owners', 'marketing_url']
-
-        course_enrollments = CourseEnrollment.enrollments_for_user(request.user)
-        for course_enrollment in course_enrollments:
-            course_key = f'{course_enrollment.course_id.org}+{course_enrollment.course_id.course}'
-            user_enrolled_course_keys.add(course_key)
-
-        # Pick 5 course keys, excluding the user's already enrolled course(s).
-        enrollable_course_keys = list(set(course_keys).difference(user_enrolled_course_keys))[:5]
-        for course_id in enrollable_course_keys:
-            course_data = get_course_data(course_id, fields)
-            if course_data:
-                recommended_courses.append({
-                    'course_key': course_id,
-                    'title': course_data['title'],
-                    'logo_image_url': course_data['owners'][0]['logo_image_url'],
-                    'marketing_url': course_data.get('marketing_url')
-                })
-
-        segment.track(user_id, 'edx.bi.user.recommendations.count', {'count': len(recommended_courses)})
-        return Response({'courses': recommended_courses, 'is_personalized_recommendation': not is_control}, status=200)

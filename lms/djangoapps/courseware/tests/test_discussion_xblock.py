@@ -12,17 +12,18 @@ import uuid
 
 from unittest import mock
 import ddt
+from django.conf import settings
+from django.test.utils import override_settings
 from django.urls import reverse
 from opaque_keys.edx.keys import CourseKey
 from web_fragments.fragment import Fragment
 from xblock.field_data import DictFieldData
 from xmodule.discussion_block import DiscussionXBlock, loader
-from xmodule.modulestore import ModuleStoreEnum
-from xmodule.modulestore.tests.django_utils import TEST_DATA_MONGO_AMNESTY_MODULESTORE, SharedModuleStoreTestCase
-from xmodule.modulestore.tests.factories import ItemFactory, ToyCourseFactory
+from xmodule.modulestore.tests.django_utils import TEST_DATA_SPLIT_MODULESTORE, SharedModuleStoreTestCase
+from xmodule.modulestore.tests.factories import BlockFactory, ToyCourseFactory
 
 from lms.djangoapps.course_api.blocks.tests.helpers import deserialize_usage_key
-from lms.djangoapps.courseware.module_render import get_module_for_descriptor_internal
+from lms.djangoapps.courseware.block_render import get_block_for_descriptor_internal
 from lms.djangoapps.courseware.tests.helpers import XModuleRenderingTestBase
 from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration, Provider
 from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
@@ -168,6 +169,7 @@ class TestViews(TestDiscussionXBlock):
             }
         )
 
+    @override_settings(FEATURES=dict(settings.FEATURES, ENABLE_DISCUSSION_SERVICE='True'))
     @ddt.data(
         (False, False, False),
         (True, False, False),
@@ -232,6 +234,7 @@ class TestTemplates(TestDiscussionXBlock):
         fragment = self.block.author_view({})
         assert f'data-discussion-id="{self.discussion_id}"' in fragment.content
 
+    @override_settings(FEATURES=dict(settings.FEATURES, ENABLE_DISCUSSION_SERVICE='True'))
     @ddt.data(
         (True, False, False),
         (False, True, False),
@@ -261,7 +264,7 @@ class TestXBlockInCourse(SharedModuleStoreTestCase):
     """
     Test the discussion xblock as rendered in the course and course API.
     """
-    MODULESTORE = TEST_DATA_MONGO_AMNESTY_MODULESTORE
+    MODULESTORE = TEST_DATA_SPLIT_MODULESTORE
 
     @classmethod
     def setUpClass(cls):
@@ -274,7 +277,7 @@ class TestXBlockInCourse(SharedModuleStoreTestCase):
         cls.course_key = cls.course.id
         cls.course_usage_key = cls.store.make_course_usage_key(cls.course_key)
         cls.discussion_id = "test_discussion_xblock_id"
-        cls.discussion = ItemFactory.create(
+        cls.discussion = BlockFactory.create(
             parent_location=cls.course_usage_key,
             category='discussion',
             discussion_id=cls.discussion_id,
@@ -291,11 +294,12 @@ class TestXBlockInCourse(SharedModuleStoreTestCase):
             block = block.get_parent()
         return block
 
+    @override_settings(FEATURES=dict(settings.FEATURES, ENABLE_DISCUSSION_SERVICE='True'))
     def test_html_with_user(self):
         """
         Test rendered DiscussionXBlock permissions.
         """
-        discussion_xblock = get_module_for_descriptor_internal(
+        discussion_xblock = get_block_for_descriptor_internal(
             user=self.user,
             descriptor=self.discussion,
             student_data=mock.Mock(name='student_data'),
@@ -309,52 +313,51 @@ class TestXBlockInCourse(SharedModuleStoreTestCase):
         assert 'data-user-create-comment="false"' in html
         assert 'data-user-create-subcomment="false"' in html
 
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_discussion_render_successfully_with_orphan_parent(self, default_store):
+    @override_settings(FEATURES=dict(settings.FEATURES, ENABLE_DISCUSSION_SERVICE='True'))
+    def test_discussion_render_successfully_with_orphan_parent(self):
         """
         Test that discussion xblock render successfully
         if discussion xblock is child of an orphan.
         """
-        with self.store.default_store(default_store):
-            orphan_sequential = self.store.create_item(self.user.id, self.course.id, 'sequential')
+        orphan_sequential = self.store.create_item(self.user.id, self.course.id, 'sequential')
 
-            vertical = self.store.create_child(
-                self.user.id,
-                orphan_sequential.location,
-                'vertical',
-                block_id=self.course.location.block_id
-            )
+        vertical = self.store.create_child(
+            self.user.id,
+            orphan_sequential.location,
+            'vertical',
+            block_id=self.course.location.block_id
+        )
 
-            discussion = self.store.create_child(
-                self.user.id,
-                vertical.location,
-                'discussion',
-                block_id=self.course.location.block_id
-            )
+        discussion = self.store.create_child(
+            self.user.id,
+            vertical.location,
+            'discussion',
+            block_id=self.course.location.block_id
+        )
 
-            discussion = self.store.get_item(discussion.location)
+        discussion = self.store.get_item(discussion.location)
 
-            root = self.get_root(discussion)
-            # Assert that orphan sequential is root of the discussion xblock.
-            assert orphan_sequential.location.block_type == root.location.block_type
-            assert orphan_sequential.location.block_id == root.location.block_id
+        root = self.get_root(discussion)
+        # Assert that orphan sequential is root of the discussion xblock.
+        assert orphan_sequential.location.block_type == root.location.block_type
+        assert orphan_sequential.location.block_id == root.location.block_id
 
-            # Get xblock bound to a user and a descriptor.
-            discussion_xblock = get_module_for_descriptor_internal(
-                user=self.user,
-                descriptor=discussion,
-                student_data=mock.Mock(name='student_data'),
-                course_id=self.course.id,
-                track_function=mock.Mock(name='track_function'),
-                request_token='request_token',
-            )
+        # Get xblock bound to a user and a descriptor.
+        discussion_xblock = get_block_for_descriptor_internal(
+            user=self.user,
+            descriptor=discussion,
+            student_data=mock.Mock(name='student_data'),
+            course_id=self.course.id,
+            track_function=mock.Mock(name='track_function'),
+            request_token='request_token',
+        )
 
-            fragment = discussion_xblock.render('student_view')
-            html = fragment.content
+        fragment = discussion_xblock.render('student_view')
+        html = fragment.content
 
-            assert isinstance(discussion_xblock, DiscussionXBlock)
-            assert 'data-user-create-comment="false"' in html
-            assert 'data-user-create-subcomment="false"' in html
+        assert isinstance(discussion_xblock, DiscussionXBlock)
+        assert 'data-user-create-comment="false"' in html
+        assert 'data-user-create-subcomment="false"' in html
 
     def test_discussion_student_view_data(self):
         """
@@ -390,7 +393,7 @@ class TestXBlockInCourse(SharedModuleStoreTestCase):
             provider_type=Provider.OPEN_EDX,
         )
 
-        discussion_xblock = get_module_for_descriptor_internal(
+        discussion_xblock = get_block_for_descriptor_internal(
             user=self.user,
             descriptor=self.discussion,
             student_data=mock.Mock(name='student_data'),
@@ -410,6 +413,7 @@ class TestXBlockQueryLoad(SharedModuleStoreTestCase):
     Test the number of queries executed when rendering the XBlock.
     """
 
+    @override_settings(FEATURES=dict(settings.FEATURES, ENABLE_DISCUSSION_SERVICE='True'))
     def test_permissions_query_load(self):
         """
         Tests that the permissions queries are cached when rendering numerous discussion XBlocks.
@@ -422,7 +426,7 @@ class TestXBlockQueryLoad(SharedModuleStoreTestCase):
 
         for counter in range(5):
             discussion_id = f'test_discussion_{counter}'
-            discussions.append(ItemFactory.create(
+            discussions.append(BlockFactory.create(
                 parent_location=course_usage_key,
                 category='discussion',
                 discussion_id=discussion_id,
@@ -440,7 +444,7 @@ class TestXBlockQueryLoad(SharedModuleStoreTestCase):
         num_queries = 6
 
         for discussion in discussions:
-            discussion_xblock = get_module_for_descriptor_internal(
+            discussion_xblock = get_block_for_descriptor_internal(
                 user=user,
                 descriptor=discussion,
                 student_data=mock.Mock(name='student_data'),

@@ -202,6 +202,8 @@ def use_bulk_ops(view_func):
     @wraps(view_func)
     def wrapped_view(request, course_id, *args, **kwargs):
         course_key = CourseKey.from_string(course_id)
+        if course_key.deprecated:
+            raise Http404
         with modulestore().bulk_operations(course_key):
             return view_func(request, course_key, *args, **kwargs)
     return wrapped_view
@@ -419,7 +421,7 @@ def _find_thread(request, course, discussion_id, thread_id):
         )
     except cc.utils.CommentClientRequestError:
         return None
-    # Verify that the student has access to this thread if belongs to a course discussion module
+    # Verify that the student has access to this thread if belongs to a course discussion block
     thread_context = getattr(thread, "context", "course")
     if thread_context == "course" and not utils.discussion_category_id_access(course, request.user, discussion_id):
         return None

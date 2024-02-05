@@ -16,7 +16,7 @@ class StudioEditableBlock(XBlockMixin):
 
     def render_children(self, context, fragment, can_reorder=False, can_add=False):
         """
-        Renders the children of the module with HTML appropriate for Studio. If can_reorder is True,
+        Renders the children of the block with HTML appropriate for Studio. If can_reorder is True,
         then the children will be rendered to support drag and drop.
         """
         contents = []
@@ -25,7 +25,7 @@ class StudioEditableBlock(XBlockMixin):
             if can_reorder:
                 context['reorderable_items'].add(child.location)
             context['can_add'] = can_add
-            rendered_child = child.render(StudioEditableModule.get_preview_view_name(child), context)
+            rendered_child = child.render(StudioEditableBlock.get_preview_view_name(child), context)
             fragment.add_fragment_resources(rendered_child)
 
             contents.append({
@@ -43,12 +43,9 @@ class StudioEditableBlock(XBlockMixin):
     @staticmethod
     def get_preview_view_name(block):
         """
-        Helper method for getting preview view name (student_view or author_view) for a given module.
+        Helper method for getting preview view name (student_view or author_view) for a given block.
         """
         return AUTHOR_VIEW if has_author_view(block) else STUDENT_VIEW
-
-
-StudioEditableModule = StudioEditableBlock
 
 
 def has_author_view(descriptor):

@@ -1660,6 +1660,51 @@ paths:
         in: path
         required: true
         type: string
+  /courses/v1/block_metadata/{usage_key_string}:
+    get:
+      operationId: courses_v1_block_metadata_read
+      summary: '**Use Case**'
+      description: |-
+        Returns the block metadata. Data like index_dictionary related to a
+            block should be fetched using this API, because they are too large for
+            the cache used by the course blocks/transformers API.
+
+        **Example requests**:
+
+            GET /api/courses/v1/block_metadata/<usage_id>/?
+                &include=index_dictionary
+
+        **Parameters**:
+
+            * "include": a comma-separated list of keys to include.
+              Valid keys are "index_dictionary".
+
+        **Response Values**
+
+            A dictionary containing:
+            * id (string): Block usage_key_str.
+            * type (string) Block type.
+            * index_dictionary: (dict) The index_dictionary JSON data
+              (usually this is the text content of the block, for search
+              indexing or other purposes) for this block. Returned only if
+              the "index_dictionary" is included in the "include"
+              parameter.
+      parameters:
+        - name: include
+          in: query
+          description: A comma-separated list of keys to include.
+          required: false
+          type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - courses
+    parameters:
+      - name: usage_key_string
+        in: path
+        required: true
+        type: string
   /courses/v1/blocks/:
     get:
       operationId: courses_v1_blocks_list
@@ -2151,6 +2196,9 @@ paths:
                 * `"timestamp"`: generated from the `start` timestamp
                 * `"empty"`: no start date is specified
             * pacing: Course pacing. Possible values: instructor, self
+            * certificate_available_date (optional): Date the certificate will be available,
+              in ISO 8601 notation if the `certificates.auto_certificate_generation`
+              waffle switch is enabled
 
             Deprecated fields:
 
@@ -2195,7 +2243,8 @@ paths:
                     "start": "2015-07-17T12:00:00Z",
                     "start_display": "July 17, 2015",
                     "start_type": "timestamp",
-                    "pacing": "instructor"
+                    "pacing": "instructor",
+                    "certificate_available_date": "2015-08-14T00:00:00Z"
                 }
       parameters: []
       responses:

@@ -57,7 +57,7 @@ from .util import (
     convert_files_to_filenames,
     default_tolerance,
     find_with_default,
-    get_course_id_from_capa_module,
+    get_course_id_from_capa_block,
     get_inner_html_from_xpath,
     is_list_of_files
 )
@@ -162,7 +162,7 @@ class LoncapaResponse(six.with_metaclass(abc.ABCMeta, object)):
     # By default, we set this to False, allowing subclasses to override as appropriate.
     multi_device_support = False
 
-    def __init__(self, xml, inputfields, context, system, capa_module, minimal_init):
+    def __init__(self, xml, inputfields, context, system, capa_block, minimal_init):
         """
         Init is passed the following arguments:
 
@@ -170,13 +170,13 @@ class LoncapaResponse(six.with_metaclass(abc.ABCMeta, object)):
           - inputfields : ordered list of ElementTrees for each input entry field in this Response
           - context     : script processor context
           - system      : LoncapaSystem instance which provides OS, rendering, and user context
-          - capa_module : Capa module, to access runtime
+          - capa_block : Capa block, to access runtime
         """
         self.xml = xml
         self.inputfields = inputfields
         self.context = context
         self.capa_system = system
-        self.capa_module = capa_module  # njp, note None
+        self.capa_block = capa_block  # njp, note None
 
         self.id = xml.get('id')
 
@@ -371,10 +371,9 @@ class LoncapaResponse(six.with_metaclass(abc.ABCMeta, object)):
             else:
                 label = _('Incorrect:')
 
-        # self.runtime.track_function('get_demand_hint', event_info)
-        # This this "feedback hint" event
+        # This is the "feedback hint" event
         event_info = {}
-        event_info['module_id'] = text_type(self.capa_module.location)
+        event_info['module_id'] = text_type(self.capa_block.location)
         event_info['problem_part_id'] = self.id
         event_info['trigger_type'] = 'single'  # maybe be overwritten by log_extra
         event_info['hint_label'] = label
@@ -384,7 +383,7 @@ class LoncapaResponse(six.with_metaclass(abc.ABCMeta, object)):
         event_info['question_type'] = question_tag
         if log_extra:
             event_info.update(log_extra)
-        self.capa_module.runtime.track_function('edx.problem.hint.feedback_displayed', event_info)
+        self.capa_block.runtime.publish(self.capa_block, 'edx.problem.hint.feedback_displayed', event_info)
 
         # Form the div-wrapped hint texts
         hints_wrap = HTML('').join(
@@ -487,8 +486,8 @@ class LoncapaResponse(six.with_metaclass(abc.ABCMeta, object)):
                     globals_dict,
                     python_path=self.context['python_path'],
                     extra_files=self.context['extra_files'],
-                    limit_overrides_context=get_course_id_from_capa_module(
-                        self.capa_module
+                    limit_overrides_context=get_course_id_from_capa_block(
+                        self.capa_block
                     ),
                     slug=self.id,
                     random_seed=self.context['seed'],
@@ -726,8 +725,8 @@ class ChoiceResponse(LoncapaResponse):
         edc_max_grade = len(all_choices)
         edc_current_grade = 0
 
-        good_answers = sum([1 for answer in student_answer if answer in self.correct_choices])
-        good_non_answers = sum([1 for blank in student_non_answers if blank in self.incorrect_choices])
+        good_answers = sum(1 for answer in student_answer if answer in self.correct_choices)
+        good_non_answers = sum(1 for blank in student_non_answers if blank in self.incorrect_choices)
         edc_current_grade = good_answers + good_non_answers
 
         return_grade = round_away_from_zero(self.get_max_score() * float(edc_current_grade) / float(edc_max_grade), 2)
@@ -759,8 +758,8 @@ class ChoiceResponse(LoncapaResponse):
 
         halves_error_count = 0
 
-        incorrect_answers = sum([1 for answer in student_answer if answer in self.incorrect_choices])
-        missed_answers = sum([1 for blank in student_non_answers if blank in self.correct_choices])
+        incorrect_answers = sum(1 for answer in student_answer if answer in self.incorrect_choices)
+        missed_answers = sum(1 for blank in student_non_answers if blank in self.correct_choices)
         halves_error_count = incorrect_answers + missed_answers
 
         if halves_error_count == 0:
@@ -986,7 +985,7 @@ class MultipleChoiceResponse(LoncapaResponse):
     whole software stack works with just the one system of naming.
     The .has_mask() test on a response checks for masking, implemented by a
     ._has_mask attribute on the response object.
-    The logging functionality in capa_module calls the unmask functions here
+    The logging functionality in capa_block calls the unmask functions here
     to translate back to choice_0 name style for recording in the logs, so
     the logging is in terms of the regular names.
     """

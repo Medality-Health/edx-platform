@@ -1,7 +1,7 @@
 """
 Tests for Blocks Views
 """
-
+import ddt
 
 from datetime import datetime
 from unittest import mock
@@ -11,13 +11,17 @@ from urllib.parse import urlencode, urlunparse
 from completion.test_utils import CompletionWaffleTestMixin, submit_completions_for_testing
 from django.conf import settings
 from django.urls import reverse
-from opaque_keys.edx.locator import CourseLocator
+from opaque_keys.edx.locator import BlockUsageLocator, CourseLocator
 
 from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.roles import CourseDataResearcherRole
 from common.djangoapps.student.tests.factories import AdminFactory, CourseEnrollmentFactory, UserFactory
+from openedx.core.djangoapps.discussions.models import (
+    DiscussionsConfiguration,
+    Provider,
+)
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase  # lint-amnesty, pylint: disable=wrong-import-order
-from xmodule.modulestore.tests.factories import ToyCourseFactory  # lint-amnesty, pylint: disable=wrong-import-order
+from xmodule.modulestore.tests.factories import BlockFactory, ToyCourseFactory  # lint-amnesty, pylint: disable=wrong-import-order
 
 from .helpers import deserialize_usage_key
 
@@ -398,6 +402,7 @@ class TestBlocksView(SharedModuleStoreTestCase):
         self.verify_response_with_requested_fields(response)
 
 
+@ddt.ddt
 class TestBlocksInCourseView(TestBlocksView, CompletionWaffleTestMixin):  # pylint: disable=test-inherits-tests
     """
     Test class for BlocksInCourseView
@@ -491,3 +496,122 @@ class TestBlocksInCourseView(TestBlocksView, CompletionWaffleTestMixin):  # pyli
         })
         for block_id in self.non_orphaned_block_usage_keys:
             assert response.data['blocks'][block_id].get('completion')
+
+    @ddt.data(
+        False,
+        True,
+    )
+    def test_filter_discussion_xblocks(self, is_openedx_provider):
+        """
+        Tests if discussion xblocks are hidden for openedx provider
+        """
+        def blocks_has_discussion_xblock(blocks):
+            for key, value in blocks.items():
+                if value.get('type') == 'discussion':
+                    return True
+            return False
+
+        BlockFactory.create(
+            parent_location=self.course.location,
+            category="discussion",
+            discussion_id='topic_id',
+            discussion_category='category',
+            discussion_target='subcategory',
+        )
+        if is_openedx_provider:
+            DiscussionsConfiguration.objects.create(context_key=self.course_key, provider_type=Provider.OPEN_EDX)
+        response = self.client.get(self.url, self.query_params)
+
+        has_discussion_xblock = blocks_has_discussion_xblock(response.data.get('blocks', {}))
+        if is_openedx_provider:
+            assert not has_discussion_xblock
+        else:
+            assert has_discussion_xblock
+
+
+class TestBlockMetadataView(SharedModuleStoreTestCase):  # pylint: disable=test-inherits-tests
+    """
+    Test class for BlockMetadataView.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+
+        # create a toy course
+        cls.course = ToyCourseFactory.create(
+            modulestore=cls.store,
+            due=datetime(3013, 9, 18, 11, 30, 00),
+        )
+        cls.course_key = cls.course.id
+        cls.course_usage_key = cls.store.make_course_usage_key(cls.course_key)
+
+        cls.non_orphaned_block_usage_keys = {
+            str(item.location)
+            for item in cls.store.get_items(cls.course_key)
+            # remove all orphaned items in the course, except for the root 'course' block
+            if cls.store.get_parent_location(item.location) or item.category == 'course'
+        }
+
+    def setUp(self):
+        super().setUp()
+        self.admin_user = AdminFactory.create()
+        self.client.login(username=self.admin_user.username, password='test')
+        self.usage_key = list(self.non_orphaned_block_usage_keys)[0]
+        self.url = reverse(
+            'blocks_metadata',
+            kwargs={'usage_key_string': str(self.usage_key)}
+        )
+        self.query_params = {'include': "index_dictionary"}
+
+    def verify_response(self, expected_status_code=200, params=None, url=None):
+        """
+        Ensure that sending a GET request to the specified URL returns the
+        expected status code.
+
+        Arguments:
+            expected_status_code: The status_code that is expected in the
+                response.
+            params: Parameters to add to self.query_params to include in the
+                request.
+            url: The URL to send the GET request.  Default is self.url.
+
+        Returns:
+            response: The HttpResponse returned by the request
+        """
+        if params:
+            self.query_params.update(params)
+        response = self.client.get(url or self.url, self.query_params)
+        assert response.status_code == expected_status_code, str(response.content)
+        return response
+
+    def test_invalid_usage_key(self):
+        url = reverse(
+            'blocks_metadata',
+            kwargs={'usage_key_string': 'invalid-usage-key'}
+        )
+        self.verify_response(400, url=url)
+
+    def test_non_existent_block(self):
+        url = reverse(
+            'blocks_metadata',
+            kwargs={'usage_key_string': str(BlockUsageLocator(self.course_key, 'non-existent', 'block'))}
+        )
+        self.verify_response(404, url=url)
+
+    def test_non_existent_block_anonymous(self):
+        self.client.logout()
+        url = reverse(
+            'blocks_metadata',
+            kwargs={'usage_key_string': str(BlockUsageLocator(self.course_key, 'non-existent', 'block'))}
+        )
+        self.verify_response(403, url=url)
+
+    def test_block_metadata_response(self):
+        response = self.verify_response()
+        block_data = response.data
+        assert block_data['id'] == str(self.usage_key)
+        block_key = deserialize_usage_key(block_data['id'], self.course_key)
+        assert block_data['type'] == block_key.block_type
+        assert 'index_dictionary' in block_data
+        assert 'content' in block_data['index_dictionary']
