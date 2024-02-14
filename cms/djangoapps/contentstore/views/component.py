@@ -47,6 +47,7 @@ log = logging.getLogger(__name__)
 # @medality_custom
 COMPONENT_TYPES = [
     'ambra',
+    'ambra_case_list',
     'ambra_quiz',
     'drag_and_drop',
     'html',
@@ -309,6 +310,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     # @medality_custom
     component_display_names = {
         'ambra': _("Ambra Link"),
+        'ambra_case_list': _("Ambra Case List"),
         'ambra_quiz': _("Ambra Quiz"),
         'drag_and_drop': _("Drag and Drop"),
         'html': _("Text"),
