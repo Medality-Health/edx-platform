@@ -44,7 +44,19 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 # NOTE: This list is disjoint from ADVANCED_COMPONENT_TYPES
-COMPONENT_TYPES = ['discussion', 'library', 'html', 'openassessment', 'problem', 'video', 'drag-and-drop-v2']
+# @medality_custom
+COMPONENT_TYPES = [
+    'ambra',
+    'ambra_quiz',
+    'drag_and_drop',
+    'html',
+    'pdf',
+    'problem',
+    'select_from_library',
+    'typeform',
+    'unit_metadata',
+    'vimeo',
+]
 
 ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes()} - set(COMPONENT_TYPES))
 
@@ -294,14 +306,18 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
             "documentation_label": _("{platform_name} Support Levels:").format(platform_name=settings.PLATFORM_NAME)
         }
 
+    # @medality_custom
     component_display_names = {
-        'discussion': _("Discussion"),
+        'ambra': _("Ambra Link"),
+        'ambra_quiz': _("Ambra Quiz"),
+        'drag_and_drop': _("Drag and Drop"),
         'html': _("Text"),
+        'pdf': _("PDF"),
         'problem': _("Problem"),
-        'video': _("Video"),
-        'openassessment': _("Open Response"),
-        'library': _("Library Content"),
-        'drag-and-drop-v2': _("Drag and Drop"),
+        'select_from_library': _("Select from Library"),
+        'typeform': _("Typeform Embed"),
+        'unit_metadata': _("Unit Metadata"),
+        'vimeo': _("Vimeo"),
     }
 
     component_templates = []
