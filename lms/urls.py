@@ -794,8 +794,14 @@ if settings.DEBUG or settings.FEATURES.get('ENABLE_DJANGO_ADMIN_SITE'):
         urlpatterns += [
             re_path(r'^admin/auth/user/\d+/password/$', handler404),
         ]
+
+    # @medality_custom
+    if "defender" in settings.INSTALLED_APPS:
+        urlpatterns += [
+            path('admin/defender/', include('defender.urls')),
+        ]
+    
     urlpatterns += [
-        path('admin/defender/', include('defender.urls')),  # @medality_custom
         path('admin/password_change/', handler404),
         # We are enforcing users to login through third party auth in site's
         # login page so we are disabling the admin panel's login page.
