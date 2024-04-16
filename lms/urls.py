@@ -800,6 +800,12 @@ if settings.DEBUG or settings.FEATURES.get('ENABLE_DJANGO_ADMIN_SITE'):
         urlpatterns += [
             path('admin/defender/', include('defender.urls')),
         ]
+
+    # @medality_custom
+    if "impersonate" in settings.INSTALLED_APPS:
+        urlpatterns += [
+            path("impersonate/", include("impersonate.urls")),
+        ]
     
     urlpatterns += [
         path('admin/password_change/', handler404),
