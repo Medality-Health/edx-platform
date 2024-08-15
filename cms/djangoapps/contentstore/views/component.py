@@ -59,7 +59,15 @@ COMPONENT_TYPES = [
     'vimeo',
 ]
 
-ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes() if name != "ambra_case_list"} - set(COMPONENT_TYPES))
+ADVANCED_COMPONENT_TYPES = sorted(
+    {
+        name for name, class_ in XBlock.load_classes()
+        # TODO MRI-5684 - remove this exclusion
+        # once ambra_case_list class is deleted.
+        if name != "ambra_case_list"
+    }
+    - set(COMPONENT_TYPES)
+)
 
 ADVANCED_PROBLEM_TYPES = settings.ADVANCED_PROBLEM_TYPES
 
