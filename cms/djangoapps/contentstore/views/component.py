@@ -59,7 +59,7 @@ COMPONENT_TYPES = [
     'vimeo',
 ]
 
-ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes()} - set(COMPONENT_TYPES))
+ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes() if name != "ambra_case_list"} - set(COMPONENT_TYPES))
 
 ADVANCED_PROBLEM_TYPES = settings.ADVANCED_PROBLEM_TYPES
 
