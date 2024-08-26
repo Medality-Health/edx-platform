@@ -47,7 +47,6 @@ log = logging.getLogger(__name__)
 # @medality_custom
 COMPONENT_TYPES = [
     'ambra',
-    'ambra_case_list',
     'ambra_quiz',
     'case_history',
     'drag_and_drop',
@@ -60,7 +59,15 @@ COMPONENT_TYPES = [
     'vimeo',
 ]
 
-ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes()} - set(COMPONENT_TYPES))
+ADVANCED_COMPONENT_TYPES = sorted(
+    {
+        name for name, class_ in XBlock.load_classes()
+        # TODO MRI-5684 - remove this exclusion
+        # once ambra_case_list class is deleted.
+        if name != "ambra_case_list"
+    }
+    - set(COMPONENT_TYPES)
+)
 
 ADVANCED_PROBLEM_TYPES = settings.ADVANCED_PROBLEM_TYPES
 
@@ -311,7 +318,6 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     # @medality_custom
     component_display_names = {
         'ambra': _("Ambra Link"),
-        'ambra_case_list': _("Ambra Case List"),
         'case_history': _("Ambra Case History"),
         'ambra_quiz': _("Ambra Quiz"),
         'drag_and_drop': _("Drag and Drop"),
