@@ -13,7 +13,6 @@ import ddt
 import httpretty
 import pytest
 from django.test import override_settings
-from edx_toggles.toggles.testutils import override_waffle_flag
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test.client import RequestFactory
@@ -38,7 +37,6 @@ from common.djangoapps.student.tests.factories import (
 from common.djangoapps.util.testing import UrlResetMixin
 from common.test.utils import MockSignalHandlerMixin, disable_signal
 from lms.djangoapps.discussion.django_comment_client.tests.utils import ForumsEnableMixin
-from lms.djangoapps.discussion.toggles import ENABLE_LEARNERS_TAB_IN_DISCUSSIONS_MFE
 from lms.djangoapps.discussion.rest_api import api
 from lms.djangoapps.discussion.rest_api.api import (
     create_comment,
@@ -71,7 +69,8 @@ from lms.djangoapps.discussion.rest_api.tests.utils import (
 )
 from openedx.core.djangoapps.course_groups.models import CourseUserGroupPartitionGroup
 from openedx.core.djangoapps.course_groups.tests.helpers import CohortFactory
-from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration, DiscussionTopicLink, Provider
+from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration, DiscussionTopicLink, Provider, \
+    PostingRestriction
 from openedx.core.djangoapps.discussions.tasks import update_discussions_settings_from_course_task
 from openedx.core.djangoapps.django_comment_common.models import (
     FORUM_ROLE_ADMINISTRATOR,
@@ -151,6 +150,9 @@ def _set_course_discussion_blackout(course, user_id):
         datetime.now(UTC) - timedelta(days=3),
         datetime.now(UTC) + timedelta(days=3)
     ]
+    configuration = DiscussionsConfiguration.get(course.id)
+    configuration.posting_restrictions = PostingRestriction.SCHEDULED
+    configuration.save()
     modulestore().update_item(course, user_id)
 
 
@@ -190,6 +192,7 @@ class GetCourseTest(ForumsEnableMixin, UrlResetMixin, SharedModuleStoreTestCase)
     def test_basic(self):
         assert get_course(self.request, self.course.id) == {
             'id': str(self.course.id),
+            'is_posting_enabled': True,
             'blackouts': [],
             'thread_list_url': 'http://testserver/api/discussion/v1/threads/?course_id=course-v1%3Ax%2By%2Bz',
             'following_thread_list_url':
@@ -206,8 +209,6 @@ class GetCourseTest(ForumsEnableMixin, UrlResetMixin, SharedModuleStoreTestCase)
             'is_group_ta': False,
             'is_user_admin': False,
             'user_roles': {'Student'},
-            'learners_tab_enabled': False,
-            'reason_codes_enabled': False,
             'edit_reasons': [{'code': 'test-edit-reason', 'label': 'Test Edit Reason'}],
             'post_close_reasons': [{'code': 'test-close-reason', 'label': 'Test Close Reason'}],
         }
@@ -225,15 +226,6 @@ class GetCourseTest(ForumsEnableMixin, UrlResetMixin, SharedModuleStoreTestCase)
         course_meta = get_course(self.request, self.course.id)
         assert course_meta["has_moderation_privileges"]
         assert course_meta["user_roles"] == {FORUM_ROLE_STUDENT} | {role}
-
-    @ddt.data(True, False)
-    def test_learner_tab_enabled_flag(self, learners_tab_enabled):
-        """
-        Test the 'learners_tab_enabled' flag.
-        """
-        with override_waffle_flag(ENABLE_LEARNERS_TAB_IN_DISCUSSIONS_MFE, learners_tab_enabled):
-            course_meta = get_course(self.request, self.course.id)
-            assert course_meta['learners_tab_enabled'] == learners_tab_enabled
 
 
 @ddt.ddt
@@ -1268,13 +1260,15 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
         overrides.setdefault("course_id", str(self.course.id))
         return make_minimal_cs_thread(overrides)
 
-    def get_comment_list(self, thread, endorsed=None, page=1, page_size=1):
+    def get_comment_list(self, thread, endorsed=None, page=1, page_size=1,
+                         merge_question_type_responses=False):
         """
         Register the appropriate comments service response, then call
         get_comment_list and return the result.
         """
         self.register_get_thread_response(thread)
-        return get_comment_list(self.request, thread["id"], endorsed, page, page_size)
+        return get_comment_list(self.request, thread["id"], endorsed, page, page_size,
+                                merge_question_type_responses=merge_question_type_responses)
 
     def test_nonexistent_thread(self):
         thread_id = "nonexistent_thread"
@@ -1406,10 +1400,14 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
                 "resp_limit": ["14"],
                 "with_responses": ["True"],
                 "reverse_order": ["False"],
+                "merge_question_type_responses": ["False"],
             }
         )
 
-    def test_discussion_content(self):
+    def get_source_and_expected_comments(self):
+        """
+        Returns the source comments and expected comments for testing purposes.
+        """
         source_comments = [
             {
                 "type": "comment",
@@ -1422,7 +1420,7 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
                 "created_at": "2015-05-11T00:00:00Z",
                 "updated_at": "2015-05-11T11:11:11Z",
                 "body": "Test body",
-                "endorsed": False,
+                "endorsed": True,
                 "abuse_flaggers": [],
                 "votes": {"up_count": 4},
                 "child_count": 0,
@@ -1457,7 +1455,7 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
                 "updated_at": "2015-05-11T11:11:11Z",
                 "raw_body": "Test body",
                 "rendered_body": "<p>Test body</p>",
-                "endorsed": False,
+                "endorsed": True,
                 "endorsed_by": None,
                 "endorsed_by_label": None,
                 "endorsed_at": None,
@@ -1472,6 +1470,14 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
                 "anonymous": False,
                 "anonymous_to_peers": False,
                 "last_edit": None,
+                "edit_by_label": None,
+                "profile_image": {
+                    "has_image": False,
+                    "image_url_full": "http://testserver/static/default_500.png",
+                    "image_url_large": "http://testserver/static/default_120.png",
+                    "image_url_medium": "http://testserver/static/default_50.png",
+                    "image_url_small": "http://testserver/static/default_30.png",
+                },
             },
             {
                 "id": "test_comment_2",
@@ -1498,14 +1504,36 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
                 "anonymous": True,
                 "anonymous_to_peers": False,
                 "last_edit": None,
+                "edit_by_label": None,
+                "profile_image": {
+                    "has_image": False,
+                    "image_url_full": "http://testserver/static/default_500.png",
+                    "image_url_large": "http://testserver/static/default_120.png",
+                    "image_url_medium": "http://testserver/static/default_50.png",
+                    "image_url_small": "http://testserver/static/default_30.png",
+                },
             },
         ]
+        return source_comments, expected_comments
+
+    def test_discussion_content(self):
+        source_comments, expected_comments = self.get_source_and_expected_comments()
         actual_comments = self.get_comment_list(
             self.make_minimal_cs_thread({"children": source_comments})
         ).data["results"]
         assert actual_comments == expected_comments
 
-    def test_question_content(self):
+    def test_question_content_with_merge_question_type_responses(self):
+        source_comments, expected_comments = self.get_source_and_expected_comments()
+        actual_comments = self.get_comment_list(
+            self.make_minimal_cs_thread({
+                "thread_type": "question",
+                "children": source_comments,
+                "resp_total": len(source_comments)
+            }), merge_question_type_responses=True).data["results"]
+        assert actual_comments == expected_comments
+
+    def test_question_content_(self):
         thread = self.make_minimal_cs_thread({
             "thread_type": "question",
             "endorsed_responses": [make_minimal_cs_comment({"id": "endorsed_comment", "username": self.user.username})],
@@ -1539,11 +1567,13 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
         assert actual_comments[0]['endorsed_by'] is None
 
     @ddt.data(
-        ("discussion", None, "children", "resp_total"),
-        ("question", False, "non_endorsed_responses", "non_endorsed_resp_total"),
+        ("discussion", None, "children", "resp_total", False),
+        ("question", False, "non_endorsed_responses", "non_endorsed_resp_total", False),
+        ("question", None, "children", "resp_total", True),
     )
     @ddt.unpack
-    def test_cs_pagination(self, thread_type, endorsed_arg, response_field, response_total_field):
+    def test_cs_pagination(self, thread_type, endorsed_arg, response_field,
+                           response_total_field, merge_question_type_responses):
         """
         Test cases in which pagination is done by the comments service.
 
@@ -1563,22 +1593,26 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
         })
 
         # Only page
-        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=1, page_size=5).data
+        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=1, page_size=5,
+                                       merge_question_type_responses=merge_question_type_responses).data
         assert actual['pagination']['next'] is None
         assert actual['pagination']['previous'] is None
 
         # First page of many
-        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=1, page_size=2).data
+        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=1, page_size=2,
+                                       merge_question_type_responses=merge_question_type_responses).data
         assert actual['pagination']['next'] == 'http://testserver/test_path?page=2'
         assert actual['pagination']['previous'] is None
 
         # Middle page of many
-        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=2, page_size=2).data
+        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=2, page_size=2,
+                                       merge_question_type_responses=merge_question_type_responses).data
         assert actual['pagination']['next'] == 'http://testserver/test_path?page=3'
         assert actual['pagination']['previous'] == 'http://testserver/test_path?page=1'
 
         # Last page of many
-        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=3, page_size=2).data
+        actual = self.get_comment_list(thread, endorsed=endorsed_arg, page=3, page_size=2,
+                                       merge_question_type_responses=merge_question_type_responses).data
         assert actual['pagination']['next'] is None
         assert actual['pagination']['previous'] == 'http://testserver/test_path?page=2'
 
@@ -1589,7 +1623,8 @@ class GetCommentListTest(ForumsEnableMixin, CommentsServiceMockMixin, SharedModu
             response_total_field: 5
         })
         with pytest.raises(PageNotFoundError):
-            self.get_comment_list(thread, endorsed=endorsed_arg, page=2, page_size=5)
+            self.get_comment_list(thread, endorsed=endorsed_arg, page=2, page_size=5,
+                                  merge_question_type_responses=merge_question_type_responses)
 
     def test_question_endorsed_pagination(self):
         thread = self.make_minimal_cs_thread({
@@ -1922,7 +1957,7 @@ class CreateThreadTest(
         with self.assert_signal_sent(api, 'thread_created', sender=None, user=self.user, exclude_args=('post',)):
             actual = create_thread(self.request, self.minimal_data)
         expected = self.expected_thread_data({
-            "author_label": "Staff",
+            "author_label": "Moderator",
             "id": "test_id",
             "course_id": str(self.course.id),
             "comment_list_url": "http://testserver/api/discussion/v1/comments/?thread_id=test_id",
@@ -2149,6 +2184,7 @@ class CreateThreadTest(
 @disable_signal(api, 'comment_created')
 @disable_signal(api, 'comment_voted')
 @mock.patch.dict("django.conf.settings.FEATURES", {"ENABLE_DISCUSSION_SERVICE": True})
+@mock.patch("lms.djangoapps.discussion.signals.handlers.send_response_notifications", new=mock.Mock())
 class CreateCommentTest(
         ForumsEnableMixin,
         CommentsServiceMockMixin,
@@ -2186,6 +2222,17 @@ class CreateCommentTest(
             "thread_id": "test_thread",
             "raw_body": "Test body",
         }
+
+        mock_response = {
+            'collection': [],
+            'page': 1,
+            'num_pages': 1,
+            'subscriptions_count': 1,
+            'corrected_text': None
+
+        }
+        self.register_get_subscriptions('cohort_thread', mock_response)
+        self.register_get_subscriptions('test_thread', mock_response)
 
     @ddt.data(None, "test_parent")
     @mock.patch("eventtracking.tracker.emit")
@@ -2232,6 +2279,14 @@ class CreateCommentTest(
             "anonymous": False,
             "anonymous_to_peers": False,
             "last_edit": None,
+            "edit_by_label": None,
+            "profile_image": {
+                "has_image": False,
+                "image_url_full": "http://testserver/static/default_500.png",
+                "image_url_large": "http://testserver/static/default_120.png",
+                "image_url_medium": "http://testserver/static/default_50.png",
+                "image_url_small": "http://testserver/static/default_30.png",
+            },
         }
         assert actual == expected
         expected_url = (
@@ -2239,13 +2294,16 @@ class CreateCommentTest(
             "/api/v1/threads/test_thread/comments"
         )
         assert urlparse(httpretty.last_request().path).path == expected_url  # lint-amnesty, pylint: disable=no-member
-        assert parsed_body(httpretty.last_request()) == {
+
+        data = httpretty.latest_requests()
+        assert parsed_body(data[len(data) - 2]) == {
             'course_id': [str(self.course.id)],
             'body': ['Test body'],
             'user_id': [str(self.user.id)],
             'anonymous': ['False'],
             'anonymous_to_peers': ['False'],
         }
+
         expected_event_name = (
             "edx.forum.comment.created" if parent_id else
             "edx.forum.response.created"
@@ -2308,7 +2366,7 @@ class CreateCommentTest(
             "thread_id": "test_thread",
             "parent_id": parent_id,
             "author": self.user.username,
-            "author_label": "Staff",
+            "author_label": "Moderator",
             "created_at": "2015-05-27T00:00:00Z",
             "updated_at": "2015-05-27T00:00:00Z",
             "raw_body": "Test body",
@@ -2328,6 +2386,14 @@ class CreateCommentTest(
             "anonymous": False,
             "anonymous_to_peers": False,
             "last_edit": None,
+            "edit_by_label": None,
+            "profile_image": {
+                "has_image": False,
+                "image_url_full": "http://testserver/static/default_500.png",
+                "image_url_large": "http://testserver/static/default_120.png",
+                "image_url_medium": "http://testserver/static/default_50.png",
+                "image_url_small": "http://testserver/static/default_30.png",
+            },
         }
         assert actual == expected
         expected_url = (
@@ -2335,7 +2401,8 @@ class CreateCommentTest(
             "/api/v1/threads/test_thread/comments"
         )
         assert urlparse(httpretty.last_request().path).path == expected_url  # pylint: disable=no-member
-        assert parsed_body(httpretty.last_request()) == {
+        data = httpretty.latest_requests()
+        assert parsed_body(data[len(data) - 2]) == {
             "course_id": [str(self.course.id)],
             "body": ["Test body"],
             "user_id": [str(self.user.id)],
@@ -2684,7 +2751,8 @@ class UpdateThreadTest(
 
     @ddt.data(*itertools.product([True, False], [True, False]))
     @ddt.unpack
-    def test_following(self, old_following, new_following):
+    @mock.patch("eventtracking.tracker.emit")
+    def test_following(self, old_following, new_following, mock_emit):
         """
         Test attempts to edit the "following" field.
 
@@ -2699,7 +2767,12 @@ class UpdateThreadTest(
         self.register_subscription_response(self.user)
         self.register_thread()
         data = {"following": new_following}
-        result = update_thread(self.request, "test_thread", data)
+        signal_name = "thread_followed" if new_following else "thread_unfollowed"
+        mock_path = f"openedx.core.djangoapps.django_comment_common.signals.{signal_name}.send"
+        with mock.patch(mock_path) as signal_patch:
+            result = update_thread(self.request, "test_thread", data)
+            if old_following != new_following:
+                self.assertEqual(signal_patch.call_count, 1)
         assert result['following'] == new_following
         last_request_path = urlparse(httpretty.last_request().path).path  # lint-amnesty, pylint: disable=no-member
         subscription_url = f"/api/v1/users/{self.user.id}/subscriptions"
@@ -2714,6 +2787,13 @@ class UpdateThreadTest(
             )
             request_data.pop("request_id", None)
             assert request_data == {'source_type': ['thread'], 'source_id': ['test_thread']}
+            event_name, event_data = mock_emit.call_args[0]
+            expected_event_action = 'followed' if new_following else 'unfollowed'
+            assert event_name == f'edx.forum.thread.{expected_event_action}'
+            assert event_data['commentable_id'] == 'original_topic'
+            assert event_data['id'] == 'test_thread'
+            assert event_data['followed'] == new_following
+            assert event_data['user_forums_roles'] == ['Student']
 
     @ddt.data(*itertools.product([True, False], [True, False]))
     @ddt.unpack
@@ -3154,6 +3234,14 @@ class UpdateCommentTest(
             "child_count": 0,
             "can_delete": True,
             "last_edit": None,
+            "edit_by_label": None,
+            "profile_image": {
+                "has_image": False,
+                "image_url_full": "http://testserver/static/default_500.png",
+                "image_url_large": "http://testserver/static/default_120.png",
+                "image_url_medium": "http://testserver/static/default_50.png",
+                "image_url_small": "http://testserver/static/default_30.png",
+            },
         }
         assert actual == expected
         assert parsed_body(httpretty.last_request()) == {
@@ -3265,7 +3353,8 @@ class UpdateCommentTest(
         [True, False],
     ))
     @ddt.unpack
-    def test_endorsed_access(self, role_name, is_thread_author, thread_type, is_comment_author):
+    @mock.patch('openedx.core.djangoapps.django_comment_common.signals.comment_endorsed.send')
+    def test_endorsed_access(self, role_name, is_thread_author, thread_type, is_comment_author, endorsed_mock):
         _assign_role_to_user(user=self.user, course_id=self.course.id, role=role_name)
         self.register_comment(
             {"user_id": str(self.user.id if is_comment_author else (self.user.id + 1))},
@@ -3280,6 +3369,7 @@ class UpdateCommentTest(
         )
         try:
             update_comment(self.request, "test_comment", {"endorsed": True})
+            self.assertEqual(endorsed_mock.call_count, 1)
             assert not expected_error
         except ValidationError as err:
             assert expected_error
@@ -4015,6 +4105,7 @@ class CourseTopicsV2Test(ModuleStoreTestCase):
     """
     Tests for discussions topic API v2 code.
     """
+
     def setUp(self) -> None:
         super().setUp()
         self.course = CourseFactory.create(

@@ -2,8 +2,6 @@ name: Javascript tests
 
 on:
   pull_request:
-    branches:
-      - master
   push:
     branches:
       - master
@@ -15,8 +13,8 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-20.04 ]
-        node-version: [ 16 ]
-        python-version: [ 3.8 ]
+        node-version: [ 18 ]
+        python-version: [ '3.8', '3.11' ]
 
     steps:
 
@@ -25,18 +23,18 @@ jobs:
       run: git fetch --depth=1 origin master
 
     - name: Setup Node
-      uses: actions/setup-node@v2
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
 
     - name: Setup npm
-      run: npm i -g npm@8.5.x
+      run: npm i -g npm@10.5.x
 
-    - name: Install Firefox 61.0
+    - name: Install Firefox 123.0
       run: |
         sudo apt-get purge firefox
-        wget "https://ftp.mozilla.org/pub/firefox/releases/61.0/linux-x86_64/en-US/firefox-61.0.tar.bz2"
-        tar -xjf firefox-61.0.tar.bz2
+        wget "https://ftp.mozilla.org/pub/firefox/releases/123.0/linux-x86_64/en-US/firefox-123.0.tar.bz2"
+        tar -xjf firefox-123.0.tar.bz2
         sudo mv firefox /opt/firefox
         sudo ln -s /opt/firefox/firefox /usr/bin/firefox
 
@@ -44,7 +42,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install libxmlsec1-dev ubuntu-restricted-extras xvfb
 
     - name: Setup Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -55,7 +53,7 @@ jobs:
 
     - name: Cache pip dependencies
       id: cache-dependencies
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ${{ steps.pip-cache-dir.outputs.dir }}
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements/edx/base.txt') }}
@@ -75,7 +73,7 @@ jobs:
         xvfb-run --auto-servernum ./scripts/all-tests.sh
 
     - name: Save Job Artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: Build-Artifacts
         path: |

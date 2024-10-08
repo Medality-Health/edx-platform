@@ -39,6 +39,7 @@ from openedx.core.djangoapps.discussions.config.waffle import (
     OVERRIDE_DISCUSSION_LEGACY_SETTINGS_FLAG
 )
 from openedx.core.djangoapps.models.course_details import CourseDetails
+from openedx.core.lib.teams_config import TeamsConfig
 from xmodule.fields import Date  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.tests.factories import CourseFactory  # lint-amnesty, pylint: disable=wrong-import-order
@@ -924,33 +925,33 @@ class CourseGradingTest(CourseTestCase):
     @mock.patch('cms.djangoapps.contentstore.signals.signals.GRADING_POLICY_CHANGED.send')
     def test_update_section_grader_type(self, send_signal, tracker, uuid):
         uuid.return_value = 'mockUUID'
-        # Get the descriptor and the section_grader_type and assert they are the default values
-        descriptor = modulestore().get_item(self.course.location)
+        # Get the block and the section_grader_type and assert they are the default values
+        block = modulestore().get_item(self.course.location)
         section_grader_type = CourseGradingModel.get_section_grader_type(self.course.location)
 
         self.assertEqual('notgraded', section_grader_type['graderType'])
-        self.assertEqual(None, descriptor.format)
-        self.assertEqual(False, descriptor.graded)
+        self.assertEqual(None, block.format)
+        self.assertEqual(False, block.graded)
 
         # Change the default grader type to Homework, which should also mark the section as graded
         CourseGradingModel.update_section_grader_type(self.course, 'Homework', self.user)
-        descriptor = modulestore().get_item(self.course.location)
+        block = modulestore().get_item(self.course.location)
         section_grader_type = CourseGradingModel.get_section_grader_type(self.course.location)
         grading_policy_1 = self._grading_policy_hash_for_course()
 
         self.assertEqual('Homework', section_grader_type['graderType'])
-        self.assertEqual('Homework', descriptor.format)
-        self.assertEqual(True, descriptor.graded)
+        self.assertEqual('Homework', block.format)
+        self.assertEqual(True, block.graded)
 
         # Change the grader type back to notgraded, which should also unmark the section as graded
         CourseGradingModel.update_section_grader_type(self.course, 'notgraded', self.user)
-        descriptor = modulestore().get_item(self.course.location)
+        block = modulestore().get_item(self.course.location)
         section_grader_type = CourseGradingModel.get_section_grader_type(self.course.location)
         grading_policy_2 = self._grading_policy_hash_for_course()
 
         self.assertEqual('notgraded', section_grader_type['graderType'])
-        self.assertEqual(None, descriptor.format)
-        self.assertEqual(False, descriptor.graded)
+        self.assertEqual(None, block.format)
+        self.assertEqual(False, block.graded)
 
         # one for each call to update_section_grader_type()
         send_signal.assert_has_calls([
@@ -1752,6 +1753,85 @@ class CourseMetadataEditingTest(CourseTestCase):
         self.request.user = self.user
         set_current_request(self.request)
 
+    def test_team_content_groups_off(self):
+        """
+        Tests that user_partition_id is not added to the model when content groups for teams are off.
+        """
+        course = CourseFactory.create(
+            teams_configuration=TeamsConfig({
+                'max_team_size': 2,
+                'team_sets': [{
+                    'id': 'arbitrary-topic-id',
+                    'name': 'arbitrary-topic-name',
+                    'description': 'arbitrary-topic-desc'
+                }]
+            })
+        )
+        settings_dict = {
+            "teams_configuration": {
+                "value": {
+                    "max_team_size": 2,
+                    "team_sets": [
+                        {
+                            "id": "topic_3_id",
+                            "name": "Topic 3 Name",
+                            "description": "Topic 3 desc"
+                        },
+                    ]
+                }
+            }
+        }
+
+        _, errors, updated_data = CourseMetadata.validate_and_update_from_json(
+            course,
+            settings_dict,
+            user=self.user
+        )
+
+        self.assertEqual(len(errors), 0)
+        for team_set in updated_data["teams_configuration"]["value"]["team_sets"]:
+            self.assertNotIn("user_partition_id", team_set)
+
+    @patch("cms.djangoapps.models.settings.course_metadata.CONTENT_GROUPS_FOR_TEAMS.is_enabled", lambda _: True)
+    def test_team_content_groups_on(self):
+        """
+        Tests that user_partition_id is added to the model when content groups for teams are on.
+        """
+        course = CourseFactory.create(
+            teams_configuration=TeamsConfig({
+                'max_team_size': 2,
+                'team_sets': [{
+                    'id': 'arbitrary-topic-id',
+                    'name': 'arbitrary-topic-name',
+                    'description': 'arbitrary-topic-desc'
+                }]
+            })
+        )
+        settings_dict = {
+            "teams_configuration": {
+                "value": {
+                    "max_team_size": 2,
+                    "team_sets": [
+                        {
+                            "id": "topic_3_id",
+                            "name": "Topic 3 Name",
+                            "description": "Topic 3 desc"
+                        },
+                    ]
+                }
+            }
+        }
+
+        _, errors, updated_data = CourseMetadata.validate_and_update_from_json(
+            course,
+            settings_dict,
+            user=self.user
+        )
+
+        self.assertEqual(len(errors), 0)
+        for team_set in updated_data["teams_configuration"]["value"]["team_sets"]:
+            self.assertIn("user_partition_id", team_set)
+
 
 class CourseGraderUpdatesTest(CourseTestCase):
     """
@@ -1866,10 +1946,10 @@ id=\"course-enrollment-end-time\" value=\"\" placeholder=\"HH:MM\" autocomplete=
         """
         Return the course details page as either global or non-global staff
         """
-        user = UserFactory(is_staff=global_staff)
+        user = UserFactory(is_staff=global_staff, password=self.TEST_PASSWORD)
         CourseInstructorRole(self.course.id).add_users(user)
 
-        self.client.login(username=user.username, password='test')
+        self.client.login(username=user.username, password=self.TEST_PASSWORD)
 
         return self.client.get_html(self.course_details_url)
 

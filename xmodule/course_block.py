@@ -55,6 +55,9 @@ COURSE_VISIBILITY_PRIVATE = 'private'
 COURSE_VISIBILITY_PUBLIC_OUTLINE = 'public_outline'
 COURSE_VISIBILITY_PUBLIC = 'public'
 
+COURSE_VIDEO_SHARING_PER_VIDEO = 'per-video'
+COURSE_VIDEO_SHARING_ALL_VIDEOS = 'all-on'
+COURSE_VIDEO_SHARING_NONE = 'all-off'
 # .. toggle_name: FEATURES['CREATE_COURSE_WITH_DEFAULT_ENROLLMENT_START_DATE']
 # .. toggle_implementation: SettingDictToggle
 # .. toggle_default: False
@@ -616,14 +619,6 @@ class CourseFields:  # lint-amnesty, pylint: disable=missing-class-docstring
         # Ensure that courses imported from XML keep their image
         default="images_course_image.jpg"
     )
-    issue_badges = Boolean(
-        display_name=_("Issue Open Badges"),
-        help=_(
-            "Issue Open Badges badges for this course. Badges are generated when certificates are created."
-        ),
-        scope=Scope.settings,
-        default=True
-    )
     ## Course level Certificate Name overrides.
     cert_name_short = String(
         help=_(
@@ -979,6 +974,29 @@ class CourseFields:  # lint-amnesty, pylint: disable=missing-class-docstring
         ],
     )
 
+    video_sharing_options = String(
+        display_name=_("Video Sharing Options"),
+        help=_(
+            "Specify the video sharing options for the course. "
+            "This can be set to one of three values: "
+            "'all-on', 'all-off' and 'per-video'. with 'per-video' as the default."
+        ),
+        default=COURSE_VIDEO_SHARING_PER_VIDEO,
+        scope=Scope.settings,
+        values=[
+            {"display_name": "all-on", "value": COURSE_VIDEO_SHARING_ALL_VIDEOS},
+            {"display_name": "all-off", "value": COURSE_VIDEO_SHARING_NONE},
+            {"display_name": "per-video", "value": COURSE_VIDEO_SHARING_PER_VIDEO},
+        ]
+    )
+
+    force_on_flexible_peer_openassessments = Boolean(
+        display_name=_("Force Flexible Grading for Peer ORAs"),
+        help=_("Setting this flag will force on the flexible grading option for all peer-graded ORAs in this course."),
+        scope=Scope.settings,
+        default=False,
+    )
+
     """
     instructor_info dict structure:
     {
@@ -1148,8 +1166,8 @@ class CourseBlock(
         return policy_str
 
     @classmethod
-    def parse_xml(cls, node, runtime, keys, id_generator):
-        instance = super().parse_xml(node, runtime, keys, id_generator)
+    def parse_xml(cls, node, runtime, keys):
+        instance = super().parse_xml(node, runtime, keys)
 
         policy_dir = None
         url_name = node.get('url_name')

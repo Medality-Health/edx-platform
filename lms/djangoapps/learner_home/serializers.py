@@ -10,10 +10,12 @@ from django.urls import reverse
 from django.utils import timezone
 from opaque_keys.edx.keys import CourseKey
 from rest_framework import serializers
+from openedx_filters.learning.filters import CourseEnrollmentAPIRenderStarted, CourseRunAPIRenderStarted
 
 from common.djangoapps.course_modes.models import CourseMode
 from openedx.features.course_experience import course_home_url
 from xmodule.data import CertificatesDisplayBehaviors
+from lms.djangoapps.learner_home.utils import course_progress_url
 
 
 class LiteralField(serializers.Field):
@@ -115,7 +117,7 @@ class CourseRunSerializer(serializers.Serializer):
         return course_home_url(instance.course_id)
 
     def get_progressUrl(self, instance):
-        return reverse("progress", kwargs={"course_id": instance.course_id})
+        return course_progress_url(instance.course_id)
 
     def get_unenrollUrl(self, instance):
         return reverse("course_run_refund_status", args=[instance.course_id])
@@ -134,6 +136,14 @@ class CourseRunSerializer(serializers.Serializer):
 
     def get_resumeUrl(self, instance):
         return self.context.get("resume_course_urls", {}).get(instance.course_id)
+
+    def to_representation(self, instance):
+        """Serialize the courserun instance to be able to update the values before the API finishes rendering."""
+        serialized_courserun = super().to_representation(instance)
+        serialized_courserun = CourseRunAPIRenderStarted().run_filter(
+            serialized_courserun=serialized_courserun,
+        )
+        return serialized_courserun
 
 
 class CoursewareAccessSerializer(serializers.Serializer):
@@ -200,6 +210,7 @@ class EnrollmentSerializer(serializers.Serializer):
     hasOptedOutOfEmail = serializers.SerializerMethodField()
     lastEnrolled = serializers.DateTimeField(source="created")
     isEnrolled = serializers.BooleanField(source="is_active")
+    mode = serializers.CharField()
 
     def get_accessExpirationDate(self, instance):
         return self.context.get("audit_access_deadlines", {}).get(instance.course_id)
@@ -242,6 +253,15 @@ class EnrollmentSerializer(serializers.Serializer):
 
     def get_hasOptedOutOfEmail(self, enrollment):
         return enrollment.course_id in self.context.get("course_optouts", [])
+
+    def to_representation(self, instance):
+        """Serialize the enrollment instance to be able to update the values before the API finishes rendering."""
+        serialized_enrollment = super().to_representation(instance)
+        course_key, serialized_enrollment = CourseEnrollmentAPIRenderStarted().run_filter(
+            course_key=instance.course_id,
+            serialized_enrollment=serialized_enrollment,
+        )
+        return serialized_enrollment
 
 
 class GradeDataSerializer(serializers.Serializer):
@@ -495,6 +515,7 @@ class UnfulfilledEntitlementSerializer(serializers.Serializer):
         "hasOptedOutOfEmail": False,
         "lastEnrolled": None,
         "isEnrolled": False,
+        "mode": None,
     }
 
     # These fields contain all real data and will be serialized
@@ -561,6 +582,8 @@ class EnterpriseDashboardSerializer(serializers.Serializer):
     label = serializers.CharField(source="name")
     url = serializers.SerializerMethodField()
     uuid = serializers.UUIDField()
+    authOrgId = serializers.CharField(source="auth_org_id", allow_null=True)
+    isLearnerPortalEnabled = serializers.BooleanField(source="enable_learner_portal")
 
     def get_url(self, instance):
         return urljoin(

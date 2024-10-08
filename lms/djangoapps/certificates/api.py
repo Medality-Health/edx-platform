@@ -49,6 +49,8 @@ from lms.djangoapps.certificates.utils import (
     certificate_status_for_student as _certificate_status_for_student,
 )
 from lms.djangoapps.instructor import access
+from lms.djangoapps.utils import _get_key
+from opaque_keys.edx.keys import CourseKey
 from openedx.core.djangoapps.content.course_overviews.api import get_course_overview_or_none
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from xmodule.data import CertificatesDisplayBehaviors  # lint-amnesty, pylint: disable=wrong-import-order
@@ -610,7 +612,7 @@ def certificates_viewable_for_course(course):
     Returns True if certificates are viewable for any student enrolled in the course, False otherwise.
 
     Arguments:
-        course (CourseOverview or course descriptor): The course to check if certificates are viewable
+        course (CourseOverview or course block): The course to check if certificates are viewable
 
     Returns:
         boolean: whether the certificates are viewable or not
@@ -879,7 +881,7 @@ def available_date_for_certificate(course, certificate):
     Returns the available date to use with a certificate
 
     Arguments:
-        course (CourseOverview or course descriptor): The course we're checking
+        course (CourseOverview or course block): The course we're checking
         certificate (GeneratedCertificate): The certificate we're getting the date for
     """
     if _course_uses_available_date(course):
@@ -892,7 +894,7 @@ def display_date_for_certificate(course, certificate):
     Returns the display date that a certificate should display.
 
     Arguments:
-        course (CourseOverview or course descriptor): The course we're getting the date for
+        course (CourseOverview or course block): The course we're getting the date for
     Returns:
         datetime.date
     """
@@ -920,3 +922,34 @@ def _has_passed_or_is_allowlisted(course, student, course_grade):
     has_passed = course_grade and course_grade.passed
 
     return has_passed or is_allowlisted
+
+
+def invalidate_certificate(user_id, course_key_or_id, source):
+    """
+    Invalidate the user certificate in a given course if it exists and the user is not on the allowlist for this
+    course run.
+
+    This function is called in services.py and signals.py within the certificates folder. As of now,
+    The call in services.py occurs when an exam attempt is rejected in the legacy exams backend, edx-proctoring.
+    The call in signals.py is occurs when an exam attempt is rejected in the newer exams backend, edx-exams.
+    """
+    course_key = _get_key(course_key_or_id, CourseKey)
+    if _is_on_certificate_allowlist(user_id, course_key):
+        log.info(f'User {user_id} is on the allowlist for {course_key}. The certificate will not be invalidated.')
+        return False
+
+    try:
+        generated_certificate = GeneratedCertificate.objects.get(
+            user=user_id,
+            course_id=course_key
+        )
+        generated_certificate.invalidate(source=source)
+    except ObjectDoesNotExist:
+        log.warning(
+            'Invalidation failed because a certificate for user %d in course %s does not exist.',
+            user_id,
+            course_key
+        )
+        return False
+
+    return True

@@ -75,6 +75,7 @@ class EnrollStatusChange:
     # complete a paid course purchase
     paid_complete = 'paid_complete'
 
+
 UNENROLLED_TO_ALLOWEDTOENROLL = 'from unenrolled to allowed to enroll'
 ALLOWEDTOENROLL_TO_ENROLLED = 'from allowed to enroll to enrolled'
 ENROLLED_TO_ENROLLED = 'from enrolled to enrolled'
@@ -95,7 +96,6 @@ TRANSITION_STATES = (
     (UNENROLLED_TO_UNENROLLED, UNENROLLED_TO_UNENROLLED),
     (DEFAULT_TRANSITION_STATE, DEFAULT_TRANSITION_STATE)
 )
-
 
 EVENT_NAME_ENROLLMENT_ACTIVATED = 'edx.course.enrollment.activated'
 EVENT_NAME_ENROLLMENT_DEACTIVATED = 'edx.course.enrollment.deactivated'
@@ -226,12 +226,6 @@ class CourseEnrollmentManager(models.Manager):
         enroll_dict['total'] = total
         return enroll_dict
 
-    def enrolled_and_dropped_out_users(self, course_id):
-        """Return a queryset of Users in the course."""
-        return User.objects.filter(
-            courseenrollment__course_id=course_id
-        )
-
 
 # Named tuple for fields pertaining to the state of
 # CourseEnrollment for a user in a course.  This type
@@ -288,12 +282,12 @@ class CourseEnrollment(models.Model):
     objects = CourseEnrollmentManager()
 
     # cache key format e.g enrollment.<username>.<course_key>.mode = 'honor'
-    COURSE_ENROLLMENT_CACHE_KEY = "enrollment.{}.{}.mode"  # TODO Can this be removed?  It doesn't seem to be used.
+    COURSE_ENROLLMENT_CACHE_KEY = "enrollment.{}.{}.mode"
 
     MODE_CACHE_NAMESPACE = 'CourseEnrollment.mode_and_active'
 
     class Meta:
-        unique_together = (('user', 'course'), )
+        unique_together = (('user', 'course'),)
         indexes = [Index(fields=['user', '-created'])]
         ordering = ('user', 'course')
 
@@ -331,7 +325,7 @@ class CourseEnrollment(models.Model):
                attribute), this method will automatically save it before
                adding an enrollment for it.
 
-        `course_id` is our usual course_id string (e.g. "edX/Test101/2013_Fall)
+        `course_key` must be a opaque_keys CourseKey object.
 
         It is expected that this method is called from a method which has already
         verified the user authentication and access.
@@ -450,7 +444,7 @@ class CourseEnrollment(models.Model):
 
         if activation_changed or mode_changed:
             self.save()
-            self._update_enrollment_in_request_cache(
+            self._update_enrollment_state_in_request_cache(
                 self.user,
                 self.course_id,
                 CourseEnrollmentState(self.mode, self.is_active),
@@ -591,7 +585,7 @@ class CourseEnrollment(models.Model):
             segment_traits['email'] = self.user.email
 
             if event_name == EVENT_NAME_ENROLLMENT_ACTIVATED:
-                if should_send_enrollment_email():
+                if should_send_enrollment_email() and self.course_id:
                     course_pacing_type = 'self-paced' if self.course_overview.self_paced else 'instructor-paced'
                     send_course_enrollment_email.apply_async((self.user.id, str(self.course_id),
                                                               self.course_overview.display_name,
@@ -690,9 +684,10 @@ class CourseEnrollment(models.Model):
         if check_access:
             if cls.is_enrollment_closed(user, course) and not can_upgrade:
                 log.warning(
-                    "User %s failed to enroll in course %s because enrollment is closed",
+                    "User %s failed to enroll in course %s because enrollment is closed (can_upgrade=%s).",
                     user.username,
-                    str(course_key)
+                    str(course_key),
+                    can_upgrade,
                 )
                 raise EnrollmentClosedError
 
@@ -1345,7 +1340,7 @@ class CourseEnrollment(models.Model):
                 enrollment_state = CourseEnrollmentState(record.mode, record.is_active)
             except cls.DoesNotExist:
                 enrollment_state = CourseEnrollmentState(None, None)
-            cls._update_enrollment_in_request_cache(user, course_key, enrollment_state)
+            cls._update_enrollment_state_in_request_cache(user, course_key, enrollment_state)
         return enrollment_state
 
     @classmethod
@@ -1362,7 +1357,7 @@ class CourseEnrollment(models.Model):
         cache = cls._get_mode_active_request_cache()  # lint-amnesty, pylint: disable=redefined-outer-name
         for record in records:
             enrollment_state = CourseEnrollmentState(record.mode, record.is_active)
-            cls._update_enrollment(cache, record.user.id, course_key, enrollment_state)
+            cls._update_enrollment_state_in_cache(cache, record.user.id, course_key, enrollment_state)
 
     @classmethod
     def _get_mode_active_request_cache(cls):
@@ -1380,15 +1375,16 @@ class CourseEnrollment(models.Model):
         return cls._get_mode_active_request_cache().get((user.id, course_key))
 
     @classmethod
-    def _update_enrollment_in_request_cache(cls, user, course_key, enrollment_state):
+    def _update_enrollment_state_in_request_cache(cls, user, course_key, enrollment_state):
         """
         Updates the cached value for the user's enrollment in the
         request cache.
         """
-        cls._update_enrollment(cls._get_mode_active_request_cache(), user.id, course_key, enrollment_state)
+        cls._update_enrollment_state_in_cache(cls._get_mode_active_request_cache(),
+                                              user.id, course_key, enrollment_state)
 
     @classmethod
-    def _update_enrollment(cls, cache, user_id, course_key, enrollment_state):  # lint-amnesty, pylint: disable=redefined-outer-name
+    def _update_enrollment_state_in_cache(cls, cache, user_id, course_key, enrollment_state):  # lint-amnesty, pylint: disable=redefined-outer-name
         """
         Updates the cached value for the user's enrollment in the
         given cache.

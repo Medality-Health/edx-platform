@@ -22,7 +22,6 @@ XBLOCKS = [
     "image = xmodule.template_block:TranslateCustomTagBlock",
     "library = xmodule.library_root_xblock:LibraryRoot",
     "library_content = xmodule.library_content_block:LibraryContentBlock",
-    "library_sourced = xmodule.library_sourced_block:LibrarySourcedBlock",
     "lti = xmodule.lti_block:LTIBlock",
     "poll_question = xmodule.poll_block:PollBlock",
     # @medality_custom
@@ -95,6 +94,7 @@ setup(
             "wiki = lms.djangoapps.course_wiki.plugins.course_app:WikiCourseApp",
             "custom_pages = lms.djangoapps.courseware.plugins:CustomPagesCourseApp",
             "live = openedx.core.djangoapps.course_live.plugins:LiveCourseApp",
+            "ora_settings = lms.djangoapps.courseware.plugins:ORASettingsApp",
         ],
         "openedx.course_tool": [
             "calendar_sync_toggle = openedx.features.calendar_sync.plugins:CalendarSyncToggleTool",
@@ -108,6 +108,7 @@ setup(
             "verification = openedx.core.djangoapps.user_api.partition_schemes:ReturnGroup1PartitionScheme",
             "enrollment_track = openedx.core.djangoapps.verified_track_content.partition_scheme:EnrollmentTrackPartitionScheme",  # lint-amnesty, pylint: disable=line-too-long
             "content_type_gate = openedx.features.content_type_gating.partitions:ContentTypeGatingPartitionScheme",
+            "team = lms.djangoapps.teams.team_partition_scheme:TeamPartitionScheme",
         ],
         "openedx.block_structure_transformer": [
             "library_content = lms.djangoapps.course_blocks.transformers.library_content:ContentLibraryTransformer",
@@ -159,6 +160,7 @@ setup(
             "ace_common = openedx.core.djangoapps.ace_common.apps:AceCommonConfig",
             "course_live = openedx.core.djangoapps.course_live.apps:CourseLiveConfig",
             "content_libraries = openedx.core.djangoapps.content_libraries.apps:ContentLibrariesConfig",
+            "content_staging = openedx.core.djangoapps.content_staging.apps:ContentStagingAppConfig",
             # Importing an LMS app into the Studio process is not a good
             # practice. We're ignoring this for Discussions here because its
             # placement in LMS is a historical artifact. The eventual goal is to
@@ -181,7 +183,8 @@ setup(
         ],
         'openedx.dynamic_partition_generator': [
             'enrollment_track = xmodule.partitions.enrollment_track_partition_generator:create_enrollment_track_partition',  # lint-amnesty, pylint: disable=line-too-long
-            'content_type_gating = openedx.features.content_type_gating.partitions:create_content_gating_partition'
+            'content_type_gating = openedx.features.content_type_gating.partitions:create_content_gating_partition',
+            'team = openedx.core.lib.teams_config:create_team_set_partition',
         ],
         'xblock.v1': XBLOCKS,
         'xblock_asides.v1': XBLOCKS_ASIDES,

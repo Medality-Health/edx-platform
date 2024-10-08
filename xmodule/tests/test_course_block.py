@@ -249,36 +249,36 @@ class IsNewCourseTestCase(unittest.TestCase):
             assert d.start_date_is_still_default == s[3]
 
     def test_display_organization(self):
-        descriptor = get_dummy_course(start='2012-12-02T12:00', is_new=True)
-        assert descriptor.location.org != descriptor.display_org_with_default
-        assert descriptor.display_org_with_default == f'{ORG}_display'
+        block = get_dummy_course(start='2012-12-02T12:00', is_new=True)
+        assert block.location.org != block.display_org_with_default
+        assert block.display_org_with_default == f'{ORG}_display'
 
     def test_display_coursenumber(self):
-        descriptor = get_dummy_course(start='2012-12-02T12:00', is_new=True)
-        assert descriptor.location.course != descriptor.display_number_with_default
-        assert descriptor.display_number_with_default == f'{COURSE}_display'
+        block = get_dummy_course(start='2012-12-02T12:00', is_new=True)
+        assert block.location.course != block.display_number_with_default
+        assert block.display_number_with_default == f'{COURSE}_display'
 
     def test_is_newish(self):
-        descriptor = get_dummy_course(start='2012-12-02T12:00', is_new=True)
-        assert descriptor.is_newish is True
+        block = get_dummy_course(start='2012-12-02T12:00', is_new=True)
+        assert block.is_newish is True
 
-        descriptor = get_dummy_course(start='2013-02-02T12:00', is_new=False)
-        assert descriptor.is_newish is False
+        block = get_dummy_course(start='2013-02-02T12:00', is_new=False)
+        assert block.is_newish is False
 
-        descriptor = get_dummy_course(start='2013-02-02T12:00', is_new=True)
-        assert descriptor.is_newish is True
+        block = get_dummy_course(start='2013-02-02T12:00', is_new=True)
+        assert block.is_newish is True
 
-        descriptor = get_dummy_course(start='2013-01-15T12:00')
-        assert descriptor.is_newish is True
+        block = get_dummy_course(start='2013-01-15T12:00')
+        assert block.is_newish is True
 
-        descriptor = get_dummy_course(start='2013-03-01T12:00')
-        assert descriptor.is_newish is True
+        block = get_dummy_course(start='2013-03-01T12:00')
+        assert block.is_newish is True
 
-        descriptor = get_dummy_course(start='2012-10-15T12:00')
-        assert descriptor.is_newish is False
+        block = get_dummy_course(start='2012-10-15T12:00')
+        assert block.is_newish is False
 
-        descriptor = get_dummy_course(start='2012-12-31T12:00')
-        assert descriptor.is_newish is True
+        block = get_dummy_course(start='2012-12-31T12:00')
+        assert block.is_newish is True
 
 
 class DiscussionTopicsTestCase(unittest.TestCase):
@@ -320,7 +320,8 @@ class TeamsConfigurationTestCase(unittest.TestCase):
             "description": description,
             "id": topic_id,
             "type": "open",
-            "max_team_size": None
+            "max_team_size": None,
+            "user_partition_id": None,
         }
 
     def test_teams_enabled_new_course(self):
