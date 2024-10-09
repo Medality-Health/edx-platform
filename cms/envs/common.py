@@ -118,10 +118,6 @@ from lms.envs.common import (
     # Blockstore
     BUNDLE_ASSET_STORAGE_SETTINGS,
 
-    # Blockstore
-    BLOCKSTORE_USE_BLOCKSTORE_APP_API,
-    BUNDLE_ASSET_STORAGE_SETTINGS,
-
     # Methods to derive settings
     _make_mako_template_dirs,
     _make_locale_paths,
