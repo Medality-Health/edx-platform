@@ -3,6 +3,10 @@
 import logging
 
 import django.utils.timezone
+# @medality_custom start
+from django.apps import apps
+from django.conf import settings
+# @medality_custom end
 from oauth2_provider import models as dot_models
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
@@ -92,7 +96,9 @@ class BearerAuthentication(BaseAuthentication):
             })
         else:
             user = token.user
-            has_application = dot_models.Application.objects.filter(user_id=user.id)
+            # @medality_custom start
+            Application = apps.get_model(settings.OAUTH2_PROVIDER_APPLICATION_MODEL)
+            has_application = Application.objects.filter(user_id=user.id)
             if not user.has_usable_password() and not has_application:
                 msg = 'User disabled by admin: %s' % user.get_username()
                 raise AuthenticationFailed({
