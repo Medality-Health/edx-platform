@@ -1,3 +1,4 @@
+
 """
 Studio component views
 """
@@ -14,7 +15,6 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
-from opaque_keys.edx.locator import CourseLocator, LibraryLocator
 from xblock.core import XBlock
 from xblock.django.request import django_to_webob_request, webob_to_django_response
 from xblock.exceptions import NoSuchHandlerError
@@ -136,7 +136,7 @@ def container_handler(request, usage_key_string):  # pylint: disable=too-many-st
             raise Http404  # lint-amnesty, pylint: disable=raise-missing-from
         with modulestore().bulk_operations(usage_key.course_key):
             try:
-                courselike, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
+                course, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
             except ItemNotFoundError:
                 return HttpResponseBadRequest()
 
@@ -255,7 +255,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     component_types = _filter_disabled_blocks(component_types)
 
     # Filter out discussion component from component_types if non-legacy discussion provider is configured for course
-    component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.id)
+    component_types = _filter_discussion_for_non_legacy_provider(component_types, courselike.location.course_key)
 
     # Content Libraries currently don't allow opting in to unsupported xblocks/problem types.
     allow_unsupported = getattr(courselike, "allow_unsupported_xblocks", False)
@@ -319,7 +319,9 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
                 template for template in templates_for_category if template['boilerplate_name'] == 'blank_common.yaml'
             ]
 
-        if category == 'problem' and not use_new_problem_editor():
+        # Add any advanced problem types. Note that these are different xblocks being stored as Advanced Problems,
+        # currently not supported in libraries .
+        if category == 'problem' and not library and not use_new_problem_editor():
             disabled_block_names = [block.name for block in disabled_xblocks()]
             advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
                                       if advanced_problem_type['component'] not in disabled_block_names]
@@ -387,6 +389,10 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
             "display_name": component_display_names[category],
             "support_legend": create_support_legend_dict()
         })
+
+    # Libraries do not support advanced components at this time.
+    if library:
+        return component_templates
 
     # Check if there are any advanced modules specified in the course policy.
     # These modules should be specified as a list of strings, where the strings
@@ -477,16 +483,12 @@ def _get_item_in_course(request, usage_key):
     if not has_course_author_access(request.user, course_key):
         raise PermissionDenied()
 
-    courselike = None
-    if isinstance(course_key, CourseLocator):
-        courselike = modulestore().get_course(course_key)
-    elif isinstance(course_key, LibraryLocator):
-        courselike = modulestore().get_library(course_key)
+    course = modulestore().get_course(course_key)
     item = modulestore().get_item(usage_key, depth=1)
     lms_link = get_lms_link_for_item(item.location)
     preview_lms_link = get_lms_link_for_item(item.location, preview=True)
 
-    return courselike, item, lms_link, preview_lms_link
+    return course, item, lms_link, preview_lms_link
 
 
 @login_required
