@@ -44,11 +44,13 @@ def add_sass_to_fragment(fragment, sass_relative_path):
         )
     fragment.add_css_url(css_url)
 
-
-def add_webpack_js_to_fragment(fragment, bundle_name):
+# @medality_custom
+# add back the config parameter
+def add_webpack_js_to_fragment(fragment, bundle_name, config='DEFAULT'):
     """
     Add all JS webpack chunks to the supplied fragment.
     """
-    for chunk in webpack_loader.utils.get_files(bundle_name, None, 'DEFAULT'):
+    # @medality_custom
+    for chunk in webpack_loader.utils.get_files(bundle_name, None, config):
         if chunk['name'].endswith(('.js', '.js.gz')):
             fragment.add_javascript_url(chunk['url'])
