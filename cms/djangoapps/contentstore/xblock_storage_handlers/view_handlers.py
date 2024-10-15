@@ -58,6 +58,7 @@ from xmodule.modulestore.exceptions import InvalidLocationError, ItemNotFoundErr
 from xmodule.modulestore.inheritance import own_metadata
 from xmodule.tabs import CourseTabList
 
+
 from ..utils import (
     ancestor_has_staff_lock,
     find_release_date_source,
@@ -558,7 +559,24 @@ def _create_block(request):
     category = request.json["category"]
     if isinstance(usage_key, LibraryUsageLocator):
         # Only these categories are supported at this time.
-        if category not in ["html", "problem", "video"]:
+        # @medality_custom
+        if category not in [
+            "html",
+            "problem",
+            "video",
+            "ambra",
+            "ambra_quiz",
+            "case_file",
+            "case_history",
+            "drag_and_drop",
+            "html",
+            "pdf",
+            "problem",
+            "select_from_library",
+            "typeform",
+            "unit_metadata",
+            "vimeo",
+        ]:
             return HttpResponseBadRequest(
                 "Category '%s' not supported for Libraries" % category,
                 content_type="text/plain",
