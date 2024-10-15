@@ -1939,59 +1939,14 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
     )
     from openedx.core.djangoapps.content_staging import api as content_staging_api
 
-    course_sequence_ids = get_sequence_usage_keys(course)
+    # @medality_custom: start
     component_templates = get_component_templates(course)
-    ancestor_xblocks = []
-    parent = get_parent_xblock(xblock)
     action = request.GET.get('action', 'view')
-
+    ancestor_xblocks = []
     is_unit_page = is_unit(xblock)
     unit = xblock if is_unit_page else None
-
-    is_first = True
-    block = xblock
-
-    # Build the breadcrumbs and find the ``Unit`` ancestor
-    # if it is not the immediate parent.
-    while parent:
-
-        if unit is None and is_unit(block):
-            unit = block
-
-        # add all to nav except current xblock page
-        if xblock != block:
-            current_block = {
-                'title': block.display_name_with_default,
-                'children': parent.get_children(),
-                'is_last': is_first
-            }
-            is_first = False
-            ancestor_xblocks.append(current_block)
-
-        block = parent
-        parent = get_parent_xblock(parent)
-
-    ancestor_xblocks.reverse()
-
-    if unit is None:
-        raise ValueError("Could not determine unit page")
-
-    subsection = get_parent_xblock(unit)
-    if subsection is None:
-        raise ValueError(f"Could not determine parent subsection from unit {unit.location}")
-
-    section = get_parent_xblock(subsection)
-    if section is None:
-        raise ValueError(f"Could not determine ancestor section from unit {unit.location}")
-
-    # for the sequence navigator
-    prev_url, next_url = get_sibling_urls(subsection, unit.location)
-    # these are quoted here because they'll end up in a query string on the page,
-    # and quoting with mako will trigger the xss linter...
-    prev_url = quote_plus(prev_url) if prev_url else None
-    next_url = quote_plus(next_url) if next_url else None
-
     show_unit_tags = not is_tagging_feature_disabled()
+    
     unit_tags = None
     if show_unit_tags and is_unit_page:
         unit_tags = get_unit_tags(usage_key)
@@ -2002,19 +1957,74 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
 
     if is_unit_page:
         add_container_page_publishing_info(xblock, xblock_info)
-
-    # need to figure out where this item is in the list of children as the
-    # preview will need this
+    
+    subsection = None
+    section = None
     index = 1
-    for child in subsection.get_children():
-        if child.location == unit.location:
-            break
-        index += 1
+    prev_url = None
+    next_url = None
+    course_sequence_ids = None
+
+    if course.category == 'course':
+        course_sequence_ids = get_sequence_usage_keys(course)
+        parent = get_parent_xblock(xblock)
+
+        is_first = True
+        block = xblock
+
+        # Build the breadcrumbs and find the ``Unit`` ancestor
+        # if it is not the immediate parent.
+        while parent:
+
+            if unit is None and is_unit(block):
+                unit = block
+
+            # add all to nav except current xblock page
+            if xblock != block:
+                current_block = {
+                    'title': block.display_name_with_default,
+                    'children': parent.get_children(),
+                    'is_last': is_first
+                }
+                is_first = False
+                ancestor_xblocks.append(current_block)
+
+            block = parent
+            parent = get_parent_xblock(parent)
+
+        ancestor_xblocks.reverse()
+
+        if unit is None:
+            raise ValueError("Could not determine unit page")
+
+        subsection = get_parent_xblock(unit)
+        if subsection is None:
+            raise ValueError(f"Could not determine parent subsection from unit {unit.location}")
+
+        section = get_parent_xblock(subsection)
+        if section is None:
+            raise ValueError(f"Could not determine ancestor section from unit {unit.location}")
+
+        # for the sequence navigator
+        prev_url, next_url = get_sibling_urls(subsection, unit.location)
+        # these are quoted here because they'll end up in a query string on the page,
+        # and quoting with mako will trigger the xss linter...
+        prev_url = quote_plus(prev_url) if prev_url else None
+        next_url = quote_plus(next_url) if next_url else None
+
+        # need to figure out where this item is in the list of children as the
+        # preview will need this
+        for child in subsection.get_children():
+            if child.location == unit.location:
+                break
+            index += 1
 
     # Get the status of the user's clipboard so they can paste components if they have something to paste
     user_clipboard = content_staging_api.get_user_clipboard_json(request.user.id, request)
     library_block_types = [problem_type['component'] for problem_type in LIBRARY_BLOCK_TYPES]
     is_library_xblock = xblock.location.block_type in library_block_types
+    
+    outline_url = '{url}?format=concise'.format(url=reverse_course_url('course_handler', course.id)) if course.category == 'course' else None
 
     context = {
         'language_code': request.LANGUAGE_CODE,
@@ -2031,7 +2041,7 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
         'prev_url': prev_url,
         'next_url': next_url,
         'new_unit_category': 'vertical',
-        'outline_url': '{url}?format=concise'.format(url=reverse_course_url('course_handler', course.id)),
+        'outline_url': outline_url,
         'ancestor_xblocks': ancestor_xblocks,
         'component_templates': component_templates,
         'xblock_info': xblock_info,
@@ -2042,6 +2052,7 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
         'is_fullwidth_content': is_library_xblock,
         'course_sequence_ids': course_sequence_ids,
     }
+    # @medality_custom: end
     return context
 
 

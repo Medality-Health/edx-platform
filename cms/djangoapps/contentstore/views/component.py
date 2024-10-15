@@ -15,6 +15,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
+from opaque_keys.edx.locator import CourseLocator, LibraryLocator # @medality_custom
 from xblock.core import XBlock
 from xblock.django.request import django_to_webob_request, webob_to_django_response
 from xblock.exceptions import NoSuchHandlerError
@@ -136,17 +137,19 @@ def container_handler(request, usage_key_string):  # pylint: disable=too-many-st
             raise Http404  # lint-amnesty, pylint: disable=raise-missing-from
         with modulestore().bulk_operations(usage_key.course_key):
             try:
-                course, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
+                # @medality_custom
+                courselike, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
             except ItemNotFoundError:
                 return HttpResponseBadRequest()
 
             is_unit_page = is_unit(xblock)
             unit = xblock if is_unit_page else None
 
-            if is_unit_page and use_new_unit_page(course.id):
-                return redirect(get_unit_url(course.id, unit.location))
+            if is_unit_page and use_new_unit_page(courselike.id):
+                return redirect(get_unit_url(courselike.id, unit.location))
 
-            container_handler_context = get_container_handler_context(request, usage_key, course, xblock)
+            # @medality_custom
+            container_handler_context = get_container_handler_context(request, usage_key, courselike, xblock)
             container_handler_context.update({
                 'draft_preview_link': preview_lms_link,
                 'published_preview_link': lms_link,
@@ -484,12 +487,17 @@ def _get_item_in_course(request, usage_key):
     if not has_course_author_access(request.user, course_key):
         raise PermissionDenied()
 
-    course = modulestore().get_course(course_key)
+    # @medality_custom:
+    courselike = None
+    if isinstance(course_key, CourseLocator):
+        courselike = modulestore().get_course(course_key)
+    elif isinstance(course_key, LibraryLocator):
+        courselike = modulestore().get_library(course_key)
     item = modulestore().get_item(usage_key, depth=1)
     lms_link = get_lms_link_for_item(item.location)
     preview_lms_link = get_lms_link_for_item(item.location, preview=True)
 
-    return course, item, lms_link, preview_lms_link
+    return courselike, item, lms_link, preview_lms_link
 
 
 @login_required
