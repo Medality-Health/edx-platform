@@ -572,8 +572,6 @@ def _create_block(request):
             "html",
             "pdf",
             "problem",
-            "select_from_library",
-            "typeform",
             "unit_metadata",
             "vimeo",
         ]:
