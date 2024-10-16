@@ -98,6 +98,7 @@ from cms.djangoapps.models.settings.course_metadata import CourseMetadata
 from xmodule.library_tools import LibraryToolsService
 from xmodule.course_block import DEFAULT_START_DATE  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.data import CertificatesDisplayBehaviors
+from xmodule.library_root_xblock import LibraryRoot # @medality_custom
 from xmodule.modulestore import ModuleStoreEnum  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.exceptions import ItemNotFoundError  # lint-amnesty, pylint: disable=wrong-import-order
@@ -1534,6 +1535,7 @@ def get_library_context(request, request_is_json=False):
     )
     from cms.djangoapps.contentstore.views.library import (
         LIBRARIES_ENABLED,
+        user_can_view_create_library_button,
     )
 
     libraries = _accessible_libraries_iter(request.user) if LIBRARIES_ENABLED else []
@@ -1547,7 +1549,7 @@ def get_library_context(request, request_is_json=False):
             'in_process_course_actions': [],
             'courses': [],
             'libraries_enabled': LIBRARIES_ENABLED,
-            'show_new_library_button': LIBRARIES_ENABLED and request.user.is_active,
+            'show_new_library_button': user_can_view_create_library_button(request.user) and request.user.is_active,
             'user': request.user,
             'request_course_creator_url': reverse('request_course_creator'),
             'course_creator_status': _get_course_creator_status(request.user),
@@ -1919,8 +1921,8 @@ def _get_course_index_context(request, course_key, course_block):
 
     return course_index_context
 
-
-def get_container_handler_context(request, usage_key, course, xblock):  # pylint: disable=too-many-statements
+# @medality_custom support context_course vs context_library
+def get_container_handler_context(request, usage_key, courselike, xblock):  # pylint: disable=too-many-statements
     """
     Utils is used to get context for container xblock requests.
     It is used for both DRF and django views.
@@ -1939,35 +1941,31 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
     )
     from openedx.core.djangoapps.content_staging import api as content_staging_api
 
-    # @medality_custom: start
-    component_templates = get_component_templates(course)
-    action = request.GET.get('action', 'view')
+    # @medality_custom: start support context_course vs context_library
+    is_library = isinstance(courselike, LibraryRoot)
+    component_templates = get_component_templates(courselike, library=is_library)
     ancestor_xblocks = []
-    is_unit_page = is_unit(xblock)
-    unit = xblock if is_unit_page else None
-    show_unit_tags = not is_tagging_feature_disabled()
+    parent = get_parent_xblock(xblock)
+    action = request.GET.get('action', 'view')
     
-    unit_tags = None
-    if show_unit_tags and is_unit_page:
-        unit_tags = get_unit_tags(usage_key)
+    if is_library:
+        unit = courselike
+        subsection = courselike
+        section = courselike
+        prev_url = None
+        next_url = None
+        index = 1
+        parent_url = reverse_library_url('library_handler', courselike.id)
+        xblock_info = create_xblock_info(xblock)
+        context_name = 'context_library'
+        is_unit_page = False
+        show_unit_tags = False
+        course_sequence_ids = None
+    else:
+        course_sequence_ids = get_sequence_usage_keys(courselike)
 
-    # Fetch the XBlock info for use by the container page. Note that it includes information
-    # about the block's ancestors and siblings for use by the Unit Outline.
-    xblock_info = create_xblock_info(xblock, include_ancestor_info=is_unit_page, tags=unit_tags)
-
-    if is_unit_page:
-        add_container_page_publishing_info(xblock, xblock_info)
-    
-    subsection = None
-    section = None
-    index = 1
-    prev_url = None
-    next_url = None
-    course_sequence_ids = None
-
-    if course.category == 'course':
-        course_sequence_ids = get_sequence_usage_keys(course)
-        parent = get_parent_xblock(xblock)
+        is_unit_page = is_unit(xblock)
+        unit = xblock if is_unit_page else None
 
         is_first = True
         block = xblock
@@ -2012,23 +2010,37 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
         prev_url = quote_plus(prev_url) if prev_url else None
         next_url = quote_plus(next_url) if next_url else None
 
+        show_unit_tags = not is_tagging_feature_disabled()
+        unit_tags = None
+        if show_unit_tags and is_unit_page:
+            unit_tags = get_unit_tags(usage_key)
+
+        # Fetch the XBlock info for use by the container page. Note that it includes information
+        # about the block's ancestors and siblings for use by the Unit Outline.
+        xblock_info = create_xblock_info(xblock, include_ancestor_info=is_unit_page, tags=unit_tags)
+
+        if is_unit_page:
+            add_container_page_publishing_info(xblock, xblock_info)
+
         # need to figure out where this item is in the list of children as the
         # preview will need this
+        index = 1
         for child in subsection.get_children():
             if child.location == unit.location:
                 break
             index += 1
+        
+        parent_url = reverse_course_url('course_handler', courselike.id)
+        context_name = 'context_course'
 
     # Get the status of the user's clipboard so they can paste components if they have something to paste
     user_clipboard = content_staging_api.get_user_clipboard_json(request.user.id, request)
     library_block_types = [problem_type['component'] for problem_type in LIBRARY_BLOCK_TYPES]
     is_library_xblock = xblock.location.block_type in library_block_types
-    
-    outline_url = '{url}?format=concise'.format(url=reverse_course_url('course_handler', course.id)) if course.category == 'course' else None
 
     context = {
         'language_code': request.LANGUAGE_CODE,
-        'context_course': course,  # Needed only for display of menus at top of page.
+        context_name: courselike,  # Needed only for display of menus at top of page.
         'action': action,
         'xblock': xblock,
         'xblock_locator': xblock.location,
@@ -2041,7 +2053,7 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
         'prev_url': prev_url,
         'next_url': next_url,
         'new_unit_category': 'vertical',
-        'outline_url': outline_url,
+        'outline_url': '{url}?format=concise'.format(url=parent_url),
         'ancestor_xblocks': ancestor_xblocks,
         'component_templates': component_templates,
         'xblock_info': xblock_info,
@@ -2052,7 +2064,7 @@ def get_container_handler_context(request, usage_key, course, xblock):  # pylint
         'is_fullwidth_content': is_library_xblock,
         'course_sequence_ids': course_sequence_ids,
     }
-    # @medality_custom: end
+    # @medality_custom: end support context_course vs context_library
     return context
 
 

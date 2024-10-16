@@ -95,6 +95,8 @@ function($, _, gettext, BaseView, ViewUtils, XBlockViewUtils, XBlockStringFieldE
                 }, true);
                 defaultNewChildName = childInfo.display_name;
             }
+            // @medality_custom: start remove course-global
+            console.log('hello world')
             return {
                 xblockInfo: xblockInfo,
                 visibilityClass: XBlockViewUtils.getXBlockVisibilityClass(xblockInfo.get('visibility_state')),
@@ -113,10 +115,10 @@ function($, _, gettext, BaseView, ViewUtils, XBlockViewUtils, XBlockStringFieldE
                 staffOnlyMessage: this.model.get('staff_only_message'),
                 hideFromTOCMessage: this.model.get('hide_from_toc_message'),
                 enableHideFromTOC: this.model.get('hide_from_toc'),
-                course: course,
                 enableCopyPasteUnits: this.model.get('enable_copy_paste_units'), // ENABLE_COPY_PASTE_UNITS waffle flag
                 isTaggingFeatureDisabled: this.model.get('is_tagging_feature_disabled'), // DISABLE_TAGGING_FEATURE waffle flag
             };
+            // @medality_custom: end remove
         },
 
         renderChildren: function() {

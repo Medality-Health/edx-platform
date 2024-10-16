@@ -574,6 +574,7 @@ def _create_block(request):
             "problem",
             "unit_metadata",
             "vimeo",
+            "time_measured_problem"
         ]:
             return HttpResponseBadRequest(
                 "Category '%s' not supported for Libraries" % category,
