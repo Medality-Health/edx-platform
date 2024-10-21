@@ -3,10 +3,6 @@
 import logging
 
 import django.utils.timezone
-# @medality_custom start
-from django.apps import apps
-from django.conf import settings
-# @medality_custom end
 from oauth2_provider import models as dot_models
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
@@ -97,8 +93,13 @@ class BearerAuthentication(BaseAuthentication):
         else:
             user = token.user
             # @medality_custom start
-            Application = apps.get_model(settings.OAUTH2_PROVIDER_APPLICATION_MODEL)
-            has_application = Application.objects.filter(user_id=user.id)
+            if not token.is_valid():
+                raise AuthenticationFailed({
+                    'error_code': OAUTH2_TOKEN_ERROR,
+                    'developer_message': 'The provided access token is not valid.'
+                })
+            has_application = dot_models.get_application_model().objects.filter(user_id=user.id)
+            # @medality_custom end
             if not user.has_usable_password() and not has_application:
                 msg = 'User disabled by admin: %s' % user.get_username()
                 raise AuthenticationFailed({
@@ -122,7 +123,8 @@ class BearerAuthentication(BaseAuthentication):
         Return a valid access token stored by django-oauth-toolkit (DOT), or
         None if no matching token is found.
         """
-        token_query = dot_models.AccessToken.objects.select_related('user')
+        # @medality_custom
+        token_query = dot_models.get_access_token_model().objects.select_related('user')
         return token_query.filter(token=access_token).first()
 
     def authenticate_header(self, request):
