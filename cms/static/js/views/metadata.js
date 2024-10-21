@@ -9,6 +9,7 @@ define(
         'js/views/video/translations_editor',
         'edx-ui-toolkit/js/utils/html-utils'
     ],
+    // @medality_custom
     function(Backbone, _Selectize, BaseView, _, MetadataModel, AbstractEditor, FileUpload, UploadDialog,
         LicenseModel, LicenseView, TranscriptUtils, VideoList, VideoTranslations, HtmlUtils) {
         'use strict';

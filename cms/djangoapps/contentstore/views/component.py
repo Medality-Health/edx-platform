@@ -493,12 +493,12 @@ def _get_item_in_course(request, usage_key):
         courselike = modulestore().get_course(course_key)
     elif isinstance(course_key, LibraryLocator):
         courselike = modulestore().get_library(course_key)
-    # @medality_custom: end support context_course vs context_library
     item = modulestore().get_item(usage_key, depth=1)
     lms_link = get_lms_link_for_item(item.location)
     preview_lms_link = get_lms_link_for_item(item.location, preview=True)
 
     return courselike, item, lms_link, preview_lms_link
+    # @medality_custom: end support context_course vs context_library
 
 
 @login_required

@@ -7,6 +7,7 @@ on:
       - master
       - open-release/lilac.master
       - medality-palm
+      - medality-redwood
   workflow_dispatch:
 
 jobs:
@@ -104,7 +105,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        python-version: [ '3.11' ]
+        python-version: ["3.11"]
         django-version:
           - "pinned"
     steps:
