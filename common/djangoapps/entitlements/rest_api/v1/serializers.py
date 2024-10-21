@@ -50,7 +50,7 @@ class CourseEntitlementSupportDetailSerializer(serializers.ModelSerializer):
         slug_field='username',
         default=serializers.CurrentUserDefault()
     )
-    # unenrolled_run = CourseKeyField('unenrolled_run.id')
+    unenrolled_run = CourseKeyField('unenrolled_run.id')
 
     class Meta:
         model = CourseEntitlementSupportDetail
@@ -58,6 +58,6 @@ class CourseEntitlementSupportDetailSerializer(serializers.ModelSerializer):
             'support_user',
             'action',
             'comments',
-            # 'unenrolled_run',
+            'unenrolled_run',
             'created'
         )
