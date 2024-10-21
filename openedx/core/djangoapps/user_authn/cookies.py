@@ -14,10 +14,8 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.http import http_date, parse_http_date
 from edx_rest_framework_extensions.auth.jwt import cookies as jwt_cookies
 from edx_rest_framework_extensions.auth.jwt.constants import JWT_DELIMITER
-# @medality_custom start
-# from oauth2_provider.models import Application
-from django.apps import apps
-# @medality_custom end
+# @medality_custom
+from oauth2_provider import models as oauth_models
 from common.djangoapps.student.models import UserProfile
 
 from openedx.core.djangoapps.oauth_dispatch.adapters import DOTAdapter
@@ -358,7 +356,7 @@ def _get_login_oauth_client():
     """
     login_client_id = settings.JWT_AUTH['JWT_LOGIN_CLIENT_ID']
     # @medality_custom
-    Application = apps.get_model(settings.OAUTH2_PROVIDER_APPLICATION_MODEL)
+    Application = oauth_models.get_application_model()
     try:
         return Application.objects.get(client_id=login_client_id)
     except Application.DoesNotExist:
