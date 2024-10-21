@@ -96,7 +96,6 @@ function($, _, gettext, BaseView, ViewUtils, XBlockViewUtils, XBlockStringFieldE
                 defaultNewChildName = childInfo.display_name;
             }
             // @medality_custom: start remove course-global
-            console.log('hello world')
             return {
                 xblockInfo: xblockInfo,
                 visibilityClass: XBlockViewUtils.getXBlockVisibilityClass(xblockInfo.get('visibility_state')),
