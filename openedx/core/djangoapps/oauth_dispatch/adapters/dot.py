@@ -65,14 +65,16 @@ class DOTAdapter:
         """
         Given a token string, return the matching AccessToken object.
         """
-        return models.AccessToken.objects.get(token=token_string)
+        # @medality_custom
+        return models.get_access_token_model().objects.get(token=token_string)
 
     def create_access_token_for_test(self, token_string, client, user, expires):
         """
         Returns a new AccessToken object created from the given arguments.
         This method is currently used only by tests.
         """
-        return models.AccessToken.objects.create(
+        # @medality_custom
+        return models.get_access_token_model().objects.create(
             token=token_string,
             application=client,
             user=user,

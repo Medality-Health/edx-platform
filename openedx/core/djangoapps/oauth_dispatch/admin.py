@@ -29,8 +29,8 @@ def reregister(model_class):
 
     return decorator
 
-
-@reregister(models.AccessToken)
+# @medality_custom
+@reregister(models.get_access_token_model())
 class DOTAccessTokenAdmin(ModelAdmin):
     """
     Custom AccessToken Admin

@@ -50,7 +50,8 @@ class CourseEntitlementSupportDetailSerializer(serializers.ModelSerializer):
         slug_field='username',
         default=serializers.CurrentUserDefault()
     )
-    unenrolled_run = CourseKeyField('unenrolled_run.id')
+    # @medality_custom: this was a fix to a syntax error
+    unenrolled_run = CourseKeyField(source='unenrolled_run.id')
 
     class Meta:
         model = CourseEntitlementSupportDetail
