@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 from django.contrib.auth import authenticate, get_user_model
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
-from oauth2_provider.models import AccessToken
+# @medality_custom
+from oauth2_provider import models
 from oauth2_provider.oauth2_validators import OAuth2Validator
 from oauth2_provider.scopes import get_scopes_backend
 from pytz import utc
@@ -17,7 +18,8 @@ from ..models import RestrictedApplication
 # pylint: disable=W0223
 
 
-@receiver(pre_save, sender=AccessToken)
+# @medality_custom
+@receiver(pre_save, sender=models.get_access_token_model())
 def on_access_token_presave(sender, instance, *args, **kwargs):  # pylint: disable=unused-argument
     """
     Mark AccessTokens as expired for 'restricted applications' if required.
@@ -124,7 +126,8 @@ class EdxOAuth2Validator(OAuth2Validator):
         # and calculate expires_in (in seconds) from the database value. This
         # value should be a negative value, meaning that it is already expired.
         if RestrictedApplication.should_expire_access_token(client):
-            access_token = AccessToken.objects.get(token=token['access_token'])
+            # @medality_custom
+            access_token = models.get_access_token_model().objects.get(token=token['access_token'])
             expires_in = (access_token.expires - _get_utc_now()).total_seconds()
             assert expires_in < 0
             token['expires_in'] = expires_in
@@ -142,7 +145,8 @@ class EdxOAuth2Validator(OAuth2Validator):
         """
         expires_in = getattr(request, 'expires_in', None)
         if expires_in:
-            access_token = AccessToken.objects.get(token=token['access_token'])
+            # @medality_custom
+            access_token = models.get_access_token_model().objects.get(token=token['access_token'])
             access_token.expires = _get_utc_now() + timedelta(seconds=expires_in)
             access_token.save()
             token['expires_in'] = expires_in
