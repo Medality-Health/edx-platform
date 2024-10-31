@@ -11,7 +11,8 @@ from django.contrib.auth import logout
 from django.shortcuts import redirect
 from django.utils.http import urlencode
 from django.views.generic import TemplateView
-from oauth2_provider.models import Application
+# @medality_custom
+from oauth2_provider.models import get_application_model
 
 from openedx.core.djangoapps.safe_sessions.middleware import mark_user_change_as_expected
 from openedx.core.djangoapps.user_authn.cookies import delete_logged_in_cookies
@@ -149,7 +150,8 @@ class LogoutView(TemplateView):
 
         # Add the logout URIs for IDAs that the user was logged into (according to the session).  This line is specific
         # to DOP.
-        uris += Application.objects.filter(client_id__in=self.oauth_client_ids,
+        # @medality_custom
+        uris += get_application_model().objects.filter(client_id__in=self.oauth_client_ids,
                                            redirect_uris__isnull=False).values_list('redirect_uris', flat=True)
 
         # Add the extra logout URIs from settings.  This is added as a stop-gap solution for sessions that were
