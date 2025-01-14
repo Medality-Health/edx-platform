@@ -245,12 +245,14 @@ class LibrarySyncChildrenTask(UserTask):  # pylint: disable=abstract-method
 # Note: The decorator @set_code_owner_attribute cannot be used here because the UserTaskMixin does stack
 # inspection and can't handle additional decorators. So, wet set the code_owner attribute in the tasks' bodies instead.
 
+# @medality_custom: add filter_fn
 @shared_task(base=LibrarySyncChildrenTask, bind=True)
 def sync_from_library(
     self: LibrarySyncChildrenTask,
     user_id: int,
     dest_block_id: str,
     library_version: str | int | None,
+    filter_fn: function | None
 ) -> None:
     """
     Celery task to update the children of the library_content block at `dest_block_id`.
@@ -264,6 +266,7 @@ def sync_from_library(
         user_id=user_id,
         dest_block=dest_block,
         library_version=library_version,
+        filter_fn=filter_fn,
     )
 
 
@@ -301,13 +304,14 @@ def duplicate_children(
             if self.status.state != UserTaskStatus.FAILED:
                 self.status.fail({'raw_error_msg': str(exception)})
 
-
+# @medality_custom: add filter_fn
 def _sync_children(
     task: LibrarySyncChildrenTask,
     store: MixedModuleStore,
     user_id: int,
     dest_block: LibraryContentBlock,
     library_version: int | str | None,
+    filter_fn: function | None = None,
 ) -> None:
     """
     Implementation helper for `sync_from_library` and `duplicate_children` Celery tasks.
@@ -326,6 +330,10 @@ def _sync_children(
             source_blocks.extend(_problem_type_filter(store, library, dest_block.capa_type))
         else:
             source_blocks.extend(library.children)
+
+        if filter_fn:
+            source_blocks = filter_fn(source_blocks)
+
         with store.bulk_operations(dest_block.scope_ids.usage_id.context_key):
             try:
                 dest_block.source_library_version = str(library.location.library_key.version_guid)

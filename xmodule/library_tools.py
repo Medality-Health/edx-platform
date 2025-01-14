@@ -96,7 +96,8 @@ class LibraryToolsService:
         """
         return self.store.check_supports(block.location.course_key, 'copy_from_template')
 
-    def trigger_library_sync(self, dest_block: LibraryContentBlock, library_version: str | int | None) -> None:
+    # @medality_custom: add filter_fn
+    def trigger_library_sync(self, dest_block: LibraryContentBlock, library_version: str | int | None, filter_fn: function | None = None) -> None:
         """
         Queue task to synchronize the children of `dest_block` with it source library (at `library_version` or latest).
 
@@ -137,6 +138,7 @@ class LibraryToolsService:
                 user_id=self.user_id,
                 dest_block_id=str(dest_block.scope_ids.usage_id),
                 library_version=library_version,
+                filter_fn=filter_fn,
             ),
         )
 

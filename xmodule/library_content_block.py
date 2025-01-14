@@ -550,7 +550,8 @@ class LibraryContentBlock(
             )
         return Response()
 
-    def sync_from_library(self, upgrade_to_latest: bool = False) -> None:
+    # @medality_custom: add filter_fn
+    def sync_from_library(self, upgrade_to_latest: bool = False, filter_fn: function | None = None) -> None:
         """
         Synchronize children with source library.
 
@@ -562,6 +563,7 @@ class LibraryContentBlock(
         self.get_tools(to_read_library_content=True).trigger_library_sync(
             dest_block=self,
             library_version=(None if upgrade_to_latest else self.source_library_version),
+            filter_fn=filter_fn
         )
 
     @XBlock.json_handler
