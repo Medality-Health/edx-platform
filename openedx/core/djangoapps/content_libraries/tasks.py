@@ -31,6 +31,7 @@ from opaque_keys.edx.locator import (
     LibraryUsageLocatorV2,
     LibraryLocator as LibraryLocatorV1
 )
+from opaque_keys import InvalidKeyError
 
 from user_tasks.tasks import UserTask, UserTaskStatus
 from xblock.fields import Scope
@@ -252,6 +253,7 @@ def sync_from_library(
     user_id: int,
     dest_block_id: str,
     library_version: str | int | None,
+    library_id: str | None,
     filter_fn: function | None
 ) -> None:
     """
@@ -266,6 +268,7 @@ def sync_from_library(
         user_id=user_id,
         dest_block=dest_block,
         library_version=library_version,
+        library_id=library_id,
         filter_fn=filter_fn,
     )
 
@@ -304,13 +307,14 @@ def duplicate_children(
             if self.status.state != UserTaskStatus.FAILED:
                 self.status.fail({'raw_error_msg': str(exception)})
 
-# @medality_custom: add filter_fn
+# @medality_custom: add filter_fn and library_id
 def _sync_children(
     task: LibrarySyncChildrenTask,
     store: MixedModuleStore,
     user_id: int,
     dest_block: LibraryContentBlock,
     library_version: int | str | None,
+    library_id: str | None,
     filter_fn: function | None = None,
 ) -> None:
     """
@@ -319,7 +323,18 @@ def _sync_children(
     Can update children with a specific library `library_version`, or latest (`library_version=None`).
     """
     source_blocks = []
-    library_key = dest_block.source_library_key
+    # @medality_custom: start
+    try:
+        library_key = dest_block.source_library_key
+    except InvalidKeyError:
+        # add resiliency for race condition when this is called in the sync_from_library task as the block may not
+        # have been saved with the selected library information yet
+        if library_id:
+            try:
+                library_key = LibraryLocatorV1.from_string(library_id)
+            except InvalidKeyError:
+                library_key = LibraryLocatorV2.from_string(library_id)
+    # @medality_custom: end
     filter_children = (dest_block.capa_type != ANY_CAPA_TYPE_VALUE)
     library = library_api.get_v1_or_v2_library(library_key, version=library_version)
     if not library:
@@ -331,6 +346,7 @@ def _sync_children(
         else:
             source_blocks.extend(library.children)
 
+        # @medality_custom
         if filter_fn:
             source_blocks = filter_fn(source_blocks)
 
