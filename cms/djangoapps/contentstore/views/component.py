@@ -57,6 +57,7 @@ COMPONENT_TYPES = [
     'typeform',
     'unit_metadata',
     'vimeo',
+    'case_report_submission',
 ]
 
 ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes()} - set(COMPONENT_TYPES))
@@ -241,6 +242,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'typeform': _("Typeform Embed"),
         'unit_metadata': _("Unit Metadata"),
         'vimeo': _("Vimeo"),
+        'freetextresponse': _("Free Text Response"),
     }
 
     component_templates = []
