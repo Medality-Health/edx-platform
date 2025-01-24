@@ -49,6 +49,7 @@ COMPONENT_TYPES = [
     'ambra_quiz',
     'case_file',
     'case_history',
+    'case_report_submission',
     'drag_and_drop',
     'html',
     'pdf',
@@ -57,7 +58,6 @@ COMPONENT_TYPES = [
     'typeform',
     'unit_metadata',
     'vimeo',
-    'case_report_submission',
 ]
 
 ADVANCED_COMPONENT_TYPES = sorted({name for name, class_ in XBlock.load_classes()} - set(COMPONENT_TYPES))
@@ -234,6 +234,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'case_history': _("Case History"),
         'case_file': _("Case File (URL)"),
         'ambra_quiz': _("Case File Problem"),
+        'case_report_submission': _("Case Report Submission"),
         'drag_and_drop': _("Drag and Drop"),
         'html': _("Text"),
         'pdf': _("PDF"),
@@ -242,7 +243,6 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'typeform': _("Typeform Embed"),
         'unit_metadata': _("Unit Metadata"),
         'vimeo': _("Vimeo"),
-        'freetextresponse': _("Free Text Response"),
     }
 
     component_templates = []
