@@ -38,7 +38,6 @@ class LibraryRoot(XBlock):
         help=_("Enter the names of the advanced components to use in your library."),
         scope=Scope.settings,
         xml_node=True,
-        default=getattr(settings, "DEFAULT_LIBRARY_ADVANCED_MODULES", None),
     )
     show_children_previews = Boolean(
         display_name="Hide children preview",
