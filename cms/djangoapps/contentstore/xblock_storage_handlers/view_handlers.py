@@ -571,6 +571,7 @@ def _create_block(request):
             "drag_and_drop",
             "html",
             "pdf",
+            "ppt",
             "problem",
             "unit_metadata",
             "vimeo",
