@@ -167,6 +167,8 @@ function(domReady, $, _, CancelOnEscape, CreateCourseUtilsFactory, CreateLibrary
             $('.courses-tab').toggleClass('active', tab === 'courses-tab');
             $('.archived-courses-tab').toggleClass('active', tab === 'archived-courses-tab');
             $('.libraries-tab').toggleClass('active', tab === 'libraries-tab');
+            // @medality_custom
+            $('.state-cme-tab').toggleClass('active', tab === 'state-cme-tab');
 
             // Also toggle this course-related notice shown below the course tab, if it is present:
             $('.wrapper-creationrights').toggleClass('is-hidden', tab !== 'courses-tab');
@@ -177,6 +179,8 @@ function(domReady, $, _, CancelOnEscape, CreateCourseUtilsFactory, CreateLibrary
         var courseTabHref = $('#course-index-tabs .courses-tab a').attr('href');
         var libraryTabHref = $('#course-index-tabs .libraries-tab a').attr('href');
         var ArchivedTabHref = $('#course-index-tabs .archived-courses-tab a').attr('href');
+        // @medality_custom
+        var stateCMETabHref = $('#course-index-tabs .state-cme-tab a').attr('href');
 
         $('.new-course-button').bind('click', addNewCourse);
         $('.new-library-button').bind('click', addNewLibrary);
@@ -198,6 +202,12 @@ function(domReady, $, _, CancelOnEscape, CreateCourseUtilsFactory, CreateLibrary
         if (ArchivedTabHref === '#') {
             $('#course-index-tabs .archived-courses-tab').bind('click', showTab('archived-courses-tab'));
         }
+
+        // @medality_custom
+        if (stateCMETabHref === '#') {
+            $('#course-index-tabs .state-cme-tab').bind('click', showTab('state-cme-tab'));
+        }
+
         if (window.location.hash) {
             $(window.location.hash.replace('#', '.')).first('a').trigger('click');
         }
