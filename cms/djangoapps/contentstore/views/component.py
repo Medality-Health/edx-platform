@@ -29,6 +29,7 @@ from common.djangoapps.xblock_django.models import XBlockStudioConfigurationFlag
 from cms.djangoapps.contentstore.helpers import is_unit
 from cms.djangoapps.contentstore.toggles import use_new_problem_editor, use_new_unit_page
 from cms.djangoapps.contentstore.xblock_storage_handlers.view_handlers import load_services_for_studio
+from medality_openedx_plugin.waffle import ENABLE_CASE_REPORT_XBLOCK # @medality_custom
 from openedx.core.lib.xblock_utils import get_aside_from_xblock, is_xblock_aside
 from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration
 from openedx.core.djangoapps.content_tagging.api import get_object_tags
@@ -49,7 +50,6 @@ COMPONENT_TYPES = [
     'ambra_quiz',
     'case_file',
     'case_history',
-    'case_report',
     'drag_and_drop',
     'html',
     'pdf',
@@ -252,6 +252,10 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
     # The component_templates array is in the order of "advanced" (if present), followed
     # by the components in the order listed in COMPONENT_TYPES.
     component_types = COMPONENT_TYPES[:]
+    
+    # @medality_custom
+    if ENABLE_CASE_REPORT_XBLOCK.is_enabled():
+        component_types.append('case_report')
 
     # Libraries do not support discussions, drag-and-drop, and openassessment and other libraries
     # @medality_custom
