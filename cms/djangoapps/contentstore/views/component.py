@@ -26,10 +26,10 @@ from common.djangoapps.edxmako.shortcuts import render_to_response
 from common.djangoapps.student.auth import has_course_author_access
 from common.djangoapps.xblock_django.api import authorable_xblocks, disabled_xblocks
 from common.djangoapps.xblock_django.models import XBlockStudioConfigurationFlag
+from cms.djangoapps.contentstore.config.waffle import ENABLE_CASE_REPORT_XBLOCK
 from cms.djangoapps.contentstore.helpers import is_unit
 from cms.djangoapps.contentstore.toggles import use_new_problem_editor, use_new_unit_page
 from cms.djangoapps.contentstore.xblock_storage_handlers.view_handlers import load_services_for_studio
-from medality_openedx_plugin.waffle import ENABLE_CASE_REPORT_XBLOCK # @medality_custom
 from openedx.core.lib.xblock_utils import get_aside_from_xblock, is_xblock_aside
 from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration
 from openedx.core.djangoapps.content_tagging.api import get_object_tags
