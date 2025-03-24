@@ -145,7 +145,8 @@ $seq-nav-height: 50px;
         }
 
         //other
-        &.seq_other {
+        // @medality_custom: case report icon
+        &.seq_other, &.seq_case_report {
           .icon::before {
             content: "\f02d"; // .fa-book
           }
