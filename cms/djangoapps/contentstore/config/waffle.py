@@ -66,9 +66,3 @@ ENABLE_COURSE_UPDATE_NOTIFICATIONS = CourseWaffleFlag(
     f'{WAFFLE_NAMESPACE}.enable_course_update_notifications',
     __name__
 )
-
-
-# @medality_custom
-ENABLE_CASE_REPORT_XBLOCK = WaffleSwitch(
-    f'{WAFFLE_NAMESPACE}.enable_case_report_xblock', __name__
-)
