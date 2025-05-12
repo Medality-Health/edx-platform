@@ -3,8 +3,8 @@ Django module for Course Metadata class -- manages advanced settings and related
 """
 
 
-from datetime import datetime
 import logging
+from datetime import datetime
 
 import pytz
 from django.conf import settings
@@ -22,7 +22,7 @@ from openedx.features.course_experience import COURSE_ENABLE_UNENROLLED_ACCESS_F
 from xmodule.course_block import get_available_providers  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.django import modulestore  # lint-amnesty, pylint: disable=wrong-import-order
 from xmodule.modulestore.exceptions import InvalidProctoringProvider  # lint-amnesty, pylint: disable=wrong-import-order
-from xmodule.partitions.partitions import MINIMUM_STATIC_PARTITION_ID
+from xmodule.partitions.partitions import MINIMUM_UNUSED_PARTITION_ID
 from xmodule.partitions.partitions_service import get_all_partitions_for_course
 
 LOGGER = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ class CourseMetadata:
         'highlights_enabled_for_messaging',
         'is_onboarding_exam',
         'discussions_settings',
+        'copied_from_block',
     ]
 
     @classmethod
@@ -216,7 +217,10 @@ class CourseMetadata:
             try:
                 val = model['value']
                 if hasattr(block, key) and getattr(block, key) != val:
-                    key_values[key] = block.fields[key].from_json(val)
+                    if key == 'proctoring_provider':
+                        key_values[key] = block.fields[key].from_json(val, validate_providers=True)
+                    else:
+                        key_values[key] = block.fields[key].from_json(val)
             except (TypeError, ValueError) as err:
                 raise ValueError(_("Incorrect format for field '{name}'. {detailed_message}").format(  # lint-amnesty, pylint: disable=raise-missing-from
                     name=model['display_name'], detailed_message=str(err)))
@@ -252,7 +256,10 @@ class CourseMetadata:
             try:
                 val = model['value']
                 if hasattr(block, key) and getattr(block, key) != val:
-                    key_values[key] = block.fields[key].from_json(val)
+                    if key == 'proctoring_provider':
+                        key_values[key] = block.fields[key].from_json(val, validate_providers=True)
+                    else:
+                        key_values[key] = block.fields[key].from_json(val)
             except (TypeError, ValueError, ValidationError) as err:
                 did_validate = False
                 errors.append({'key': key, 'message': str(err), 'model': model})
@@ -316,7 +323,7 @@ class CourseMetadata:
             if not team_set.user_partition_id:
                 team_set.user_partition_id = cls.get_user_partition_id(
                     block,
-                    MINIMUM_STATIC_PARTITION_ID,
+                    MINIMUM_UNUSED_PARTITION_ID,
                     MYSQL_MAX_INT,
                 )
         return TeamsConfig(
@@ -483,17 +490,30 @@ class CourseMetadata:
             enable_proctoring = block.enable_proctored_exams
 
         if enable_proctoring:
+
+            if proctoring_provider_model:
+                proctoring_provider = proctoring_provider_model.get('value')
+            else:
+                proctoring_provider = block.proctoring_provider
+
+            # If the proctoring provider stored in the course block no longer
+            # matches the available providers for this instance, show an error
+            if proctoring_provider not in available_providers:
+                message = (
+                    f'The proctoring provider configured for this course, \'{proctoring_provider}\', is not valid.'
+                )
+                errors.append({
+                    'key': 'proctoring_provider',
+                    'message': message,
+                    'model': proctoring_provider_model
+                })
+
             # Require a valid escalation email if Proctortrack is chosen as the proctoring provider
             escalation_email_model = settings_dict.get('proctoring_escalation_email')
             if escalation_email_model:
                 escalation_email = escalation_email_model.get('value')
             else:
                 escalation_email = block.proctoring_escalation_email
-
-            if proctoring_provider_model:
-                proctoring_provider = proctoring_provider_model.get('value')
-            else:
-                proctoring_provider = block.proctoring_provider
 
             missing_escalation_email_msg = 'Provider \'{provider}\' requires an exam escalation contact.'
             if proctoring_provider_model and proctoring_provider == 'proctortrack':

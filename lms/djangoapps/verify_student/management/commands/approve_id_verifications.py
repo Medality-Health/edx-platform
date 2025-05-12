@@ -8,11 +8,13 @@ import os
 import time
 from pprint import pformat
 
-from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.management.base import BaseCommand, CommandError
 
+from common.djangoapps.student.models_api import get_name, get_pending_name_change
+from lms.djangoapps.verify_student.api import send_approval_email
 from lms.djangoapps.verify_student.models import SoftwareSecurePhotoVerification
 from lms.djangoapps.verify_student.utils import earliest_allowed_verification_date
+from openedx.features.name_affirmation_api.utils import get_name_affirmation_service
 
 
 log = logging.getLogger(__name__)
@@ -125,8 +127,8 @@ class Command(BaseCommand):
 
     def _approve_id_verifications(self, user_ids):
         """
-        This command manually approves ID verification attempts for a provided set of learners whose ID verification
-        attempt is in the submitted or must_retry state.
+        This method manually approves ID verification attempts for a provided set of user IDs so long as the attempt
+        is in the submitted or must_retry state. This method also send an IDV approval email to the user.
 
         Arguments:
             user_ids (list): user IDs of the users whose ID verification attempt should be manually approved
@@ -148,5 +150,38 @@ class Command(BaseCommand):
 
         for verification in existing_id_verifications:
             verification.approve(service='idv_verifications command')
+            send_approval_email(verification)
+            self._approve_verified_name_for_software_secure_verification(verification)
 
         return list(failed_user_ids)
+
+    def _approve_verified_name_for_software_secure_verification(self, verification):
+        """
+        This method manually creates a verified name given a SoftwareSecurePhotoVerification object.
+        """
+
+        name_affirmation_service = get_name_affirmation_service()
+
+        if name_affirmation_service:
+            from edx_name_affirmation.exceptions import VerifiedNameDoesNotExist  # pylint: disable=import-error
+
+            pending_name_change = get_pending_name_change(verification.user)
+            if pending_name_change:
+                full_name = pending_name_change.new_name
+            else:
+                full_name = get_name(verification.user.id)
+
+            try:
+                name_affirmation_service.update_verified_name_status(
+                    verification.user,
+                    'approved',
+                    verification_attempt_id=verification.id
+                )
+            except VerifiedNameDoesNotExist:
+                name_affirmation_service.create_verified_name(
+                    verification.user,
+                    verification.name,
+                    full_name,
+                    verification_attempt_id=verification.id,
+                    status='approved',
+                )

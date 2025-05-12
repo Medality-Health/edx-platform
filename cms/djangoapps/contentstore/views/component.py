@@ -12,6 +12,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.utils.translation import gettext as _
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_GET
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
@@ -27,7 +28,12 @@ from common.djangoapps.student.auth import has_course_author_access
 from common.djangoapps.xblock_django.api import authorable_xblocks, disabled_xblocks
 from common.djangoapps.xblock_django.models import XBlockStudioConfigurationFlag
 from cms.djangoapps.contentstore.helpers import is_unit
-from cms.djangoapps.contentstore.toggles import use_new_problem_editor, use_new_unit_page
+from cms.djangoapps.contentstore.toggles import (
+    libraries_v1_enabled,
+    libraries_v2_enabled,
+    use_new_problem_editor,
+    use_new_unit_page,
+)
 from cms.djangoapps.contentstore.xblock_storage_handlers.view_handlers import load_services_for_studio
 from openedx.core.lib.xblock_utils import get_aside_from_xblock, is_xblock_aside
 from openedx.core.djangoapps.discussions.models import DiscussionsConfiguration
@@ -37,7 +43,8 @@ from xmodule.modulestore.exceptions import ItemNotFoundError  # lint-amnesty, py
 
 __all__ = [
     'container_handler',
-    'component_handler'
+    'component_handler',
+    'container_embed_handler',
 ]
 
 log = logging.getLogger(__name__)
@@ -74,7 +81,7 @@ CONTAINER_TEMPLATES = [
     "add-xblock-component-support-legend", "add-xblock-component-support-level", "add-xblock-component-menu-problem",
     "xblock-string-field-editor", "xblock-access-editor", "publish-xblock", "publish-history", "tag-list",
     "unit-outline", "container-message", "container-access", "license-selector", "copy-clipboard-button",
-    "edit-title-button",
+    "edit-title-button", "edit-upstream-alert",
 ]
 
 
@@ -113,6 +120,10 @@ def _load_mixed_class(category):
     """
     Load an XBlock by category name, and apply all defined mixins
     """
+    # Libraries v2 content doesn't have an XBlock.
+    if category == 'library_v2':
+        return None
+
     component_class = XBlock.load_class(category)
     mixologist = Mixologist(settings.XBLOCK_MIXINS)
     return mixologist.mix(component_class)
@@ -159,6 +170,36 @@ def container_handler(request, usage_key_string):  # pylint: disable=too-many-st
             return render_to_response('container.html', container_handler_context)
     else:
         return HttpResponseBadRequest("Only supports HTML requests")
+
+
+@require_GET
+@login_required
+@xframe_options_exempt
+def container_embed_handler(request, usage_key_string):  # pylint: disable=too-many-statements
+    """
+    Returns an HttpResponse with HTML content for the container XBlock.
+    The returned HTML is a chromeless rendering of the XBlock.
+
+    GET
+        html: returns the HTML page for editing a container
+        json: not currently supported
+    """
+
+    # Avoiding a circular dependency
+    from ..utils import get_container_handler_context
+
+    try:
+        usage_key = UsageKey.from_string(usage_key_string)
+    except InvalidKeyError:  # Raise Http404 on invalid 'usage_key_string'
+        return HttpResponseBadRequest()
+    with modulestore().bulk_operations(usage_key.course_key):
+        try:
+            course, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
+        except ItemNotFoundError:
+            raise Http404  # lint-amnesty, pylint: disable=raise-missing-from
+
+        container_handler_context = get_container_handler_context(request, usage_key, course, xblock)
+        return render_to_response('container_chromeless.html', container_handler_context)
 
 
 def get_component_templates(courselike, library=False):  # lint-amnesty, pylint: disable=too-many-statements
@@ -255,7 +296,16 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
 
     # Libraries do not support discussions, drag-and-drop, and openassessment and other libraries
     # @medality_custom
-    component_not_supported_by_library = ['discussion', 'library', 'openassessment', 'drag-and-drop-v2', 'select_from_library', 'typeform']
+    component_not_supported_by_library = [
+        'discussion',
+        'library',
+        'openassessment',
+        'drag-and-drop-v2',
+        'library_v2',
+        'itembank',
+        'select_from_library',
+        'typeform',
+    ]
     if library:
         component_types = [component for component in component_types
                            if component not in set(component_not_supported_by_library)]
@@ -274,7 +324,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         templates_for_category = []
         component_class = _load_mixed_class(category)
 
-        if support_level_without_template and category != 'library':
+        if support_level_without_template and category not in ['library']:
             # add the default template with localized display name
             # TODO: Once mixins are defined per-application, rather than per-runtime,
             # this should use a cms mixed-in class. (cpennington)
@@ -469,6 +519,11 @@ def _filter_disabled_blocks(all_blocks):
     Filter out disabled xblocks from the provided list of xblock names.
     """
     disabled_block_names = [block.name for block in disabled_xblocks()]
+    if not libraries_v1_enabled():
+        disabled_block_names.append('library')
+    if not libraries_v2_enabled():
+        disabled_block_names.append('library_v2')
+        disabled_block_names.append('itembank')
     return [block_name for block_name in all_blocks if block_name not in disabled_block_names]
 
 

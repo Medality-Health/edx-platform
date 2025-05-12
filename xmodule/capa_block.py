@@ -14,7 +14,7 @@ import struct
 import sys
 import traceback
 
-from bleach.sanitizer import Cleaner
+import nh3
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.encoding import smart_str
@@ -616,11 +616,15 @@ class ProblemBlock(
             "",
             capa_content
         )
+        # Strip out all other tags, leaving their content. But we want spaces between adjacent tags, so that
+        # <choice correct="true"><div>Option A</div></choice><choice correct="false"><div>Option B</div></choice>
+        # becomes "Option A Option B" not "Option AOption B" (these will appear in search results)
+        capa_content = re.sub(r"</(\w+)><([^>]+)>", r"</\1> <\2>", capa_content)
         capa_content = re.sub(
             r"(\s|&nbsp;|//)+",
             " ",
-            Cleaner(tags=[], strip=True).clean(capa_content)
-        )
+            nh3.clean(capa_content, tags=set())
+        ).strip()
 
         capa_body = {
             "capa_content": capa_content,

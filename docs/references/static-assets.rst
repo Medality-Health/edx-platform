@@ -127,7 +127,7 @@ If you would like to understand these more deeply, they are defined in
 supported, but their underlying implementations may change without notice.
 
 .. _webpack CLI: https://webpack.js.org/api/cli/
-.. _package.json: ../package.json
+.. _package.json: ../../package.json
 
 Collect assets
 **************
@@ -139,7 +139,7 @@ skip this section.
 First, ensure you have a Python enironment with all edx-platform dependencies
 installed::
 
-  pip install -r requirements/edx/base.txt
+  pip install -r requirements/edx/base.txt -e .
 
 Next, download localized versions of edx-platform assets. Under the hood, this
 command uses the `Open edX Atlas`_ tool, which manages aggregated translations

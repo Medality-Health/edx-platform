@@ -14,7 +14,6 @@ from cms.envs.common import (  # lint-amnesty, pylint: disable=unused-import
     ADVANCED_PROBLEM_TYPES,
     COURSE_IMPORT_EXPORT_STORAGE,
     GIT_EXPORT_DEFAULT_IDENT,
-    LIBRARY_AUTHORING_MICROFRONTEND_URL,
     SCRAPE_YOUTUBE_THUMBNAILS_JOB_QUEUE,
     VIDEO_TRANSCRIPT_MIGRATIONS_JOB_QUEUE,
     UPDATE_SEARCH_INDEX_JOB_QUEUE,
@@ -37,6 +36,7 @@ INSTALLED_APPS.extend([
     'cms.djangoapps.course_creators',
     'cms.djangoapps.xblock_config.apps.XBlockConfig',
     'lms.djangoapps.lti_provider',
+    'openedx.core.djangoapps.content.search',
 ])
 
 

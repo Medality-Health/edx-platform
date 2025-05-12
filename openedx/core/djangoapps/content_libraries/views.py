@@ -58,7 +58,8 @@ the api module instead.
     block.
 
     Historical note: These views used to be wrapped with @atomic because we
-    wanted to make all views that operated on Blockstore data atomic:
+    wanted to make all views that operated on Blockstore (the predecessor
+    to Learning Core) atomic:
         https://github.com/openedx/edx-platform/pull/30456
 """
 
@@ -70,8 +71,9 @@ import logging
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login
 from django.contrib.auth.models import Group
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.transaction import atomic, non_atomic_requests
-from django.http import Http404, HttpResponseBadRequest, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -83,17 +85,19 @@ from pylti1p3.contrib.django import DjangoCacheDataStorage, DjangoDbToolConf, Dj
 from pylti1p3.exception import LtiException, OIDCException
 
 import edx_api_doc_tools as apidocs
+from opaque_keys import InvalidKeyError
 from opaque_keys.edx.locator import LibraryLocatorV2, LibraryUsageLocatorV2
+from openedx_learning.api import authoring
 from organizations.api import ensure_organization
 from organizations.exceptions import InvalidOrganizationException
 from organizations.models import Organization
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.generics import GenericAPIView
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.viewsets import ViewSet
+from rest_framework.viewsets import GenericViewSet
 
 from openedx.core.djangoapps.content_libraries import api, permissions
 from openedx.core.djangoapps.content_libraries.serializers import (
@@ -104,6 +108,7 @@ from openedx.core.djangoapps.content_libraries.serializers import (
     ContentLibraryPermissionLevelSerializer,
     ContentLibraryPermissionSerializer,
     ContentLibraryUpdateSerializer,
+    ContentLibraryComponentCollectionsUpdateSerializer,
     LibraryXBlockCreationSerializer,
     LibraryXBlockMetadataSerializer,
     LibraryXBlockTypeSerializer,
@@ -111,6 +116,7 @@ from openedx.core.djangoapps.content_libraries.serializers import (
     LibraryXBlockStaticFileSerializer,
     LibraryXBlockStaticFilesSerializer,
     ContentLibraryAddPermissionByEmailSerializer,
+    LibraryPasteClipboardSerializer,
 )
 import openedx.core.djangoapps.site_configuration.helpers as configuration_helpers
 from openedx.core.lib.api.view_utils import view_auth_classes
@@ -134,12 +140,21 @@ def convert_exceptions(fn):
     def wrapped_fn(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
+        except InvalidKeyError as exc:
+            log.exception(str(exc))
+            raise NotFound  # lint-amnesty, pylint: disable=raise-missing-from
         except api.ContentLibraryNotFound:
             log.exception("Content library not found")
             raise NotFound  # lint-amnesty, pylint: disable=raise-missing-from
         except api.ContentLibraryBlockNotFound:
             log.exception("XBlock not found in content library")
             raise NotFound  # lint-amnesty, pylint: disable=raise-missing-from
+        except api.ContentLibraryCollectionNotFound:
+            log.exception("Collection not found in content library")
+            raise NotFound  # lint-amnesty, pylint: disable=raise-missing-from
+        except api.LibraryCollectionAlreadyExists as exc:
+            log.exception(str(exc))
+            raise ValidationError(str(exc))  # lint-amnesty, pylint: disable=raise-missing-from
         except api.LibraryBlockAlreadyExists as exc:
             log.exception(str(exc))
             raise ValidationError(str(exc))  # lint-amnesty, pylint: disable=raise-missing-from
@@ -152,13 +167,10 @@ def convert_exceptions(fn):
     return wrapped_fn
 
 
-class LibraryApiPagination(PageNumberPagination):
+class LibraryApiPaginationDocs:
     """
-    Paginates over ContentLibraryMetadata objects.
+    API docs for query params related to paginating ContentLibraryMetadata objects.
     """
-    page_size = 50
-    page_size_query_param = 'page_size'
-
     apidoc_params = [
         apidocs.query_parameter(
             'pagination',
@@ -180,14 +192,14 @@ class LibraryApiPagination(PageNumberPagination):
 
 @method_decorator(non_atomic_requests, name="dispatch")
 @view_auth_classes()
-class LibraryRootView(APIView):
+class LibraryRootView(GenericAPIView):
     """
     Views to list, search for, and create content libraries.
     """
 
     @apidocs.schema(
         parameters=[
-            *LibraryApiPagination.apidoc_params,
+            *LibraryApiPaginationDocs.apidoc_params,
             apidocs.query_parameter(
                 'org',
                 str,
@@ -197,6 +209,13 @@ class LibraryRootView(APIView):
                 'text_search',
                 str,
                 description="The string used to filter libraries by searching in title, id, org, or description",
+            ),
+            apidocs.query_parameter(
+                'order',
+                str,
+                description=(
+                    "Name of the content library field to sort the results by. Prefix with a '-' to sort descending."
+                ),
             ),
         ],
     )
@@ -209,22 +228,23 @@ class LibraryRootView(APIView):
         org = serializer.validated_data['org']
         library_type = serializer.validated_data['type']
         text_search = serializer.validated_data['text_search']
+        order = serializer.validated_data['order']
 
-        paginator = LibraryApiPagination()
         queryset = api.get_libraries_for_user(
             request.user,
             org=org,
             library_type=library_type,
             text_search=text_search,
+            order=order,
         )
-        paginated_qs = paginator.paginate_queryset(queryset, request)
+        paginated_qs = self.paginate_queryset(queryset)
         result = api.get_metadata(paginated_qs)
 
         serializer = ContentLibraryMetadataSerializer(result, many=True)
         # Verify `pagination` param to maintain compatibility with older
         # non pagination-aware clients
         if request.GET.get('pagination', 'false').lower() == 'true':
-            return paginator.get_paginated_response(serializer.data)
+            return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
     def post(self, request):
@@ -253,13 +273,6 @@ class LibraryRootView(APIView):
             )
         org = Organization.objects.get(short_name=org_name)
 
-        # Backwards compatibility: ignore the no-longer used "collection_uuid"
-        # parameter. This was necessary with Blockstore, but not used for
-        # Learning Core. TODO: This can be removed once the frontend stops
-        # sending it to us. This whole bit of deserialization is kind of weird
-        # though, with the renames and such. Look into this later for clennup.
-        data.pop("collection_uuid", None)
-
         try:
             with atomic():
                 result = api.create_library(org=org, **data)
@@ -285,7 +298,8 @@ class LibraryDetailsView(APIView):
         key = LibraryLocatorV2.from_string(lib_key_str)
         api.require_permission_for_library_key(key, request.user, permissions.CAN_VIEW_THIS_CONTENT_LIBRARY)
         result = api.get_library(key)
-        return Response(ContentLibraryMetadataSerializer(result).data)
+        serializer = ContentLibraryMetadataSerializer(result, context={'request': self.request})
+        return Response(serializer.data)
 
     @convert_exceptions
     def patch(self, request, lib_key_str):
@@ -487,7 +501,7 @@ class LibraryCommitView(APIView):
         """
         key = LibraryLocatorV2.from_string(lib_key_str)
         api.require_permission_for_library_key(key, request.user, permissions.CAN_EDIT_THIS_CONTENT_LIBRARY)
-        api.publish_changes(key)
+        api.publish_changes(key, request.user.id)
         return Response({})
 
     @convert_exceptions
@@ -504,13 +518,42 @@ class LibraryCommitView(APIView):
 
 @method_decorator(non_atomic_requests, name="dispatch")
 @view_auth_classes()
-class LibraryBlocksView(APIView):
+class LibraryPasteClipboardView(GenericAPIView):
+    """
+    Paste content of clipboard into Library.
+    """
+    @convert_exceptions
+    def post(self, request, lib_key_str):
+        """
+        Import the contents of the user's clipboard and paste them into the Library
+        """
+        library_key = LibraryLocatorV2.from_string(lib_key_str)
+        api.require_permission_for_library_key(library_key, request.user, permissions.CAN_EDIT_THIS_CONTENT_LIBRARY)
+        serializer = LibraryPasteClipboardSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = api.import_staged_content_from_user_clipboard(
+                library_key, request.user, **serializer.validated_data
+            )
+        except api.IncompatibleTypesError as err:
+            raise ValidationError(  # lint-amnesty, pylint: disable=raise-missing-from
+                detail={'block_type': str(err)},
+            )
+
+        return Response(LibraryXBlockMetadataSerializer(result).data)
+
+
+@method_decorator(non_atomic_requests, name="dispatch")
+@view_auth_classes()
+class LibraryBlocksView(GenericAPIView):
     """
     Views to work with XBlocks in a specific content library.
     """
+
     @apidocs.schema(
         parameters=[
-            *LibraryApiPagination.apidoc_params,
+            *LibraryApiPaginationDocs.apidoc_params,
             apidocs.query_parameter(
                 'text_search',
                 str,
@@ -536,13 +579,12 @@ class LibraryBlocksView(APIView):
         api.require_permission_for_library_key(key, request.user, permissions.CAN_VIEW_THIS_CONTENT_LIBRARY)
         components = api.get_library_components(key, text_search=text_search, block_types=block_types)
 
-        paginator = LibraryApiPagination()
         paginated_xblock_metadata = [
             api.LibraryXBlockMetadata.from_component(key, component)
-            for component in paginator.paginate_queryset(components, request)
+            for component in self.paginate_queryset(components)
         ]
         serializer = LibraryXBlockMetadataSerializer(paginated_xblock_metadata, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return self.get_paginated_response(serializer.data)
 
     @convert_exceptions
     def post(self, request, lib_key_str):
@@ -556,7 +598,7 @@ class LibraryBlocksView(APIView):
 
         # Create a new regular top-level block:
         try:
-            result = api.create_library_block(library_key, **serializer.validated_data)
+            result = api.create_library_block(library_key, user_id=request.user.id, **serializer.validated_data)
         except api.IncompatibleTypesError as err:
             raise ValidationError(  # lint-amnesty, pylint: disable=raise-missing-from
                 detail={'block_type': str(err)},
@@ -574,11 +616,17 @@ class LibraryBlockView(APIView):
     @convert_exceptions
     def get(self, request, usage_key_str):
         """
-        Get metadata about an existing XBlock in the content library
+        Get metadata about an existing XBlock in the content library.
+
+        This API doesn't support versioning; most of the information it returns
+        is related to the latest draft version, or to all versions of the block.
+        If you need to get the display name of a previous version, use the
+        similar "metadata" API from djangoapps.xblock, which does support
+        versioning.
         """
         key = LibraryUsageLocatorV2.from_string(usage_key_str)
         api.require_permission_for_library_key(key.lib_key, request.user, permissions.CAN_VIEW_THIS_CONTENT_LIBRARY)
-        result = api.get_library_block(key)
+        result = api.get_library_block(key, include_collections=True)
 
         return Response(LibraryXBlockMetadataSerializer(result).data)
 
@@ -599,6 +647,41 @@ class LibraryBlockView(APIView):
         api.require_permission_for_library_key(key.lib_key, request.user, permissions.CAN_EDIT_THIS_CONTENT_LIBRARY)
         api.delete_library_block(key)
         return Response({})
+
+
+@method_decorator(non_atomic_requests, name="dispatch")
+@view_auth_classes()
+class LibraryBlockCollectionsView(APIView):
+    """
+    View to set collections for a component.
+    """
+    @convert_exceptions
+    def patch(self, request, usage_key_str) -> Response:
+        """
+        Sets Collections for a Component.
+
+        Collection and Components must all be part of the given library/learning package.
+        """
+        key = LibraryUsageLocatorV2.from_string(usage_key_str)
+        content_library = api.require_permission_for_library_key(
+            key.lib_key,
+            request.user,
+            permissions.CAN_EDIT_THIS_CONTENT_LIBRARY
+        )
+        component = api.get_component_from_usage_key(key)
+        serializer = ContentLibraryComponentCollectionsUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        collection_keys = serializer.validated_data['collection_keys']
+        api.set_library_component_collections(
+            library_key=key.lib_key,
+            component=component,
+            collection_keys=collection_keys,
+            created_by=self.request.user.id,
+            content_library=content_library,
+        )
+
+        return Response({'count': len(collection_keys)})
 
 
 @method_decorator(non_atomic_requests, name="dispatch")
@@ -632,6 +715,9 @@ class LibraryBlockOlxView(APIView):
     @convert_exceptions
     def get(self, request, usage_key_str):
         """
+        DEPRECATED. Use get_block_olx_view() in xblock REST-API.
+        Can be removed post-Teak.
+
         Get the block's OLX
         """
         key = LibraryUsageLocatorV2.from_string(usage_key_str)
@@ -653,10 +739,10 @@ class LibraryBlockOlxView(APIView):
         serializer.is_valid(raise_exception=True)
         new_olx_str = serializer.validated_data["olx"]
         try:
-            api.set_library_block_olx(key, new_olx_str)
+            version_num = api.set_library_block_olx(key, new_olx_str).version_num
         except ValueError as err:
             raise ValidationError(detail=str(err))  # lint-amnesty, pylint: disable=raise-missing-from
-        return Response(LibraryXBlockOlxSerializer({"olx": new_olx_str}).data)
+        return Response(LibraryXBlockOlxSerializer({"olx": new_olx_str, "version_num": version_num}).data)
 
 
 @method_decorator(non_atomic_requests, name="dispatch")
@@ -702,19 +788,23 @@ class LibraryBlockAssetView(APIView):
         """
         Replace a static asset file belonging to this block.
         """
+        file_path = file_path.replace(" ", "_")  # Messes up url/name correspondence due to URL encoding.
         usage_key = LibraryUsageLocatorV2.from_string(usage_key_str)
         api.require_permission_for_library_key(
             usage_key.lib_key, request.user, permissions.CAN_EDIT_THIS_CONTENT_LIBRARY,
         )
         file_wrapper = request.data['content']
         if file_wrapper.size > 20 * 1024 * 1024:  # > 20 MiB
-            # In the future, we need a way to use file_wrapper.chunks() to read
-            # the file in chunks and stream that to Blockstore, but Blockstore
-            # currently lacks an API for streaming file uploads.
+            # TODO: This check was written when V2 Libraries were backed by the Blockstore micro-service.
+            #       Now that we're on Learning Core, do we still need it? Here's the original comment:
+            #         In the future, we need a way to use file_wrapper.chunks() to read
+            #         the file in chunks and stream that to Blockstore, but Blockstore
+            #         currently lacks an API for streaming file uploads.
+            #       Ref:  https://github.com/openedx/edx-platform/issues/34737
             raise ValidationError("File too big")
         file_content = file_wrapper.read()
         try:
-            result = api.add_library_block_static_asset_file(usage_key, file_path, file_content)
+            result = api.add_library_block_static_asset_file(usage_key, file_path, file_content, request.user)
         except ValueError:
             raise ValidationError("Invalid file path")  # lint-amnesty, pylint: disable=raise-missing-from
         return Response(LibraryXBlockStaticFileSerializer(result).data)
@@ -729,7 +819,7 @@ class LibraryBlockAssetView(APIView):
             usage_key.lib_key, request.user, permissions.CAN_EDIT_THIS_CONTENT_LIBRARY,
         )
         try:
-            api.delete_library_block_static_asset_file(usage_key, file_path)
+            api.delete_library_block_static_asset_file(usage_key, file_path, request.user)
         except ValueError:
             raise ValidationError("Invalid file path")  # lint-amnesty, pylint: disable=raise-missing-from
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -737,7 +827,21 @@ class LibraryBlockAssetView(APIView):
 
 @method_decorator(non_atomic_requests, name="dispatch")
 @view_auth_classes()
-class LibraryImportTaskViewSet(ViewSet):
+class LibraryBlockPublishView(APIView):
+    """
+    Commit/publish all of the draft changes made to the component.
+    """
+
+    @convert_exceptions
+    def post(self, request, usage_key_str):
+        key = LibraryUsageLocatorV2.from_string(usage_key_str)
+        api.publish_component_changes(key, request.user)
+        return Response({})
+
+
+@method_decorator(non_atomic_requests, name="dispatch")
+@view_auth_classes()
+class LibraryImportTaskViewSet(GenericViewSet):
     """
     Import blocks from Courseware through modulestore.
     """
@@ -755,9 +859,9 @@ class LibraryImportTaskViewSet(ViewSet):
         )
         queryset = api.ContentLibrary.objects.get_by_key(library_key).import_tasks
         result = ContentLibraryBlockImportTaskSerializer(queryset, many=True).data
-        paginator = LibraryApiPagination()
-        return paginator.get_paginated_response(
-            paginator.paginate_queryset(result, request)
+
+        return self.get_paginated_response(
+            self.paginate_queryset(result)
         )
 
     @convert_exceptions
@@ -877,7 +981,7 @@ class LtiToolLaunchView(TemplateResponseMixin, LtiToolView):
     LTI platform.  Other features and resouces are ignored.
     """
 
-    template_name = 'content_libraries/xblock_iframe.html'
+    template_name = 'xblock_v2/xblock_iframe.html'
 
     @property
     def launch_data(self):
@@ -1065,3 +1169,105 @@ class LtiToolJwksView(LtiToolView):
         Return the JWKS.
         """
         return JsonResponse(self.lti_tool_config.get_jwks(), safe=False)
+
+
+def get_component_version_asset(request, component_version_uuid, asset_path):
+    """
+    Serves static assets associated with particular Component versions.
+
+    Important notes:
+    * This is meant for Studio/authoring use ONLY. It requires read access to
+      the content library.
+    * It uses the UUID because that's easier to parse than the key field (which
+      could be part of an OpaqueKey, but could also be almost anything else).
+    * This is not very performant, and we still want to use the X-Accel-Redirect
+      method for serving LMS traffic in the longer term (and probably Studio
+      eventually).
+    """
+    try:
+        component_version = authoring.get_component_version_by_uuid(
+            component_version_uuid
+        )
+    except ObjectDoesNotExist as exc:
+        raise Http404() from exc
+
+    # Permissions check...
+    learning_package = component_version.component.learning_package
+    library_key = LibraryLocatorV2.from_string(learning_package.key)
+    api.require_permission_for_library_key(
+        library_key, request.user, permissions.CAN_VIEW_THIS_CONTENT_LIBRARY,
+    )
+
+    # We already have logic for getting the correct content and generating the
+    # proper headers in Learning Core, but the response generated here is an
+    # X-Accel-Redirect and lacks the actual content. We eventually want to use
+    # this response in conjunction with a media reverse proxy (Caddy or Nginx),
+    # but in the short term we're just going to remove the redirect and stream
+    # the content directly.
+    redirect_response = authoring.get_redirect_response_for_component_asset(
+        component_version_uuid,
+        asset_path,
+        public=False,
+    )
+
+    # If there was any error, we return that response because it will have the
+    # correct headers set and won't have any X-Accel-Redirect header set.
+    if redirect_response.status_code != 200:
+        return redirect_response
+
+    # If we got here, we know that the asset exists and it's okay to download.
+    cv_content = component_version.componentversioncontent_set.get(key=asset_path)
+    content = cv_content.content
+
+    # Delete the re-direct part of the response headers. We'll copy the rest.
+    headers = redirect_response.headers
+    headers.pop('X-Accel-Redirect')
+
+    # We need to set the content size header manually because this is a
+    # streaming response. It's not included in the redirect headers because it's
+    # not needed there (the reverse-proxy would have direct access to the file).
+    headers['Content-Length'] = content.size
+
+    if request.method == "HEAD":
+        return HttpResponse(headers=headers)
+
+    # Otherwise it's going to be a GET response. We don't support response
+    # offsets or anything fancy, because we don't expect to run this view at
+    # LMS-scale.
+    return StreamingHttpResponse(
+        content.read_file().chunks(),
+        headers=redirect_response.headers,
+    )
+
+
+@view_auth_classes()
+class LibraryComponentAssetView(APIView):
+    """
+    Serves static assets associated with particular Component versions.
+    """
+    @convert_exceptions
+    def get(self, request, component_version_uuid, asset_path):
+        """
+        GET API for fetching static asset for given component_version_uuid.
+        """
+        return get_component_version_asset(request, component_version_uuid, asset_path)
+
+
+@view_auth_classes()
+class LibraryComponentDraftAssetView(APIView):
+    """
+    Serves the draft version of static assets associated with a Library Component.
+
+    See `get_component_version_asset` for more details
+    """
+    @convert_exceptions
+    def get(self, request, usage_key, asset_path):
+        """
+        Fetches component_version_uuid for given usage_key and returns component asset.
+        """
+        try:
+            component_version_uuid = api.get_component_from_usage_key(usage_key).versioning.draft.uuid
+        except ObjectDoesNotExist as exc:
+            raise Http404() from exc
+
+        return get_component_version_asset(request, component_version_uuid, asset_path)

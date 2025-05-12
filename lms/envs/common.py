@@ -56,7 +56,10 @@ from enterprise.constants import (
     ENTERPRISE_FULFILLMENT_OPERATOR_ROLE,
     ENTERPRISE_REPORTING_CONFIG_ADMIN_ROLE,
     ENTERPRISE_SSO_ORCHESTRATOR_OPERATOR_ROLE,
-    ENTERPRISE_OPERATOR_ROLE
+    ENTERPRISE_OPERATOR_ROLE,
+    SYSTEM_ENTERPRISE_PROVISIONING_ADMIN_ROLE,
+    PROVISIONING_ENTERPRISE_CUSTOMER_ADMIN_ROLE,
+    PROVISIONING_PENDING_ENTERPRISE_CUSTOMER_ADMIN_ROLE,
 )
 
 from openedx.core.constants import COURSE_KEY_REGEX, COURSE_KEY_PATTERN, COURSE_ID_PATTERN
@@ -290,7 +293,7 @@ FEATURES = {
     # sandbox, for testing whether it's enabled properly.
     'ENABLE_DEBUG_RUN_PYTHON': False,
 
-    # Enable URL that shows information about the status of variuous services
+    # Enable URL that shows information about the status of various services
     'ENABLE_SERVICE_STATUS': False,
 
     # Don't autoplay videos for students
@@ -458,7 +461,7 @@ FEATURES = {
     # .. toggle_name: FEATURES['ENABLE_THIRD_PARTY_AUTH']
     # .. toggle_implementation: DjangoSetting
     # .. toggle_default: False
-    # .. toggle_description: Turn on third-party auth. Disabled for now because full mplementations are not yet
+    # .. toggle_description: Turn on third-party auth. Disabled for now because full implementations are not yet
     #   available. Remember to run migrations if you enable this; we don't create tables by default. This feature can
     #   be enabled on a per-site basis. When enabling this feature, remember to define the allowed authentication
     #   backends with the AUTHENTICATION_BACKENDS setting.
@@ -699,7 +702,7 @@ FEATURES = {
     # .. toggle_default: False
     # .. toggle_description: When set to True, Open edX site can be used as an LTI Provider to other systems
     #    and applications.
-    # .. toggle_warning: After enabling this feature flag there are multiple steps invloved to configure edX
+    # .. toggle_warning: After enabling this feature flag there are multiple steps involved to configure edX
     #    as LTI provider. Full guide is available here:
     #    https://edx.readthedocs.io/projects/edx-installing-configuring-and-running/en/latest/configuration/lti/index.html
     # .. toggle_use_cases: open_edx
@@ -946,17 +949,6 @@ FEATURES = {
     # .. toggle_tickets: 'https://openedx.atlassian.net/browse/OSPR-5290'
     'ENABLE_BULK_USER_RETIREMENT': False,
 
-    # .. toggle_name: FEATURES['ENABLE_V2_CERT_DISPLAY_SETTINGS']
-    # .. toggle_implementation: DjangoSetting
-    # .. toggle_default: False
-    # .. toggle_description: Whether to use the reimagined certificates_display_behavior and certificate_available_date
-    # .. settings. Will eventually become the default.
-    # .. toggle_use_cases: temporary
-    # .. toggle_creation_date: 2021-07-26
-    # .. toggle_target_removal_date: 2021-10-01
-    # .. toggle_tickets: 'https://openedx.atlassian.net/browse/MICROBA-1405'
-    'ENABLE_V2_CERT_DISPLAY_SETTINGS': False,
-
     # .. toggle_name: FEATURES['ENABLE_INTEGRITY_SIGNATURE']
     # .. toggle_implementation: DjangoSetting
     # .. toggle_default: False
@@ -983,7 +975,7 @@ FEATURES = {
     # .. toggle_default: False
     # .. toggle_description: When true, replaces the bulk email tool found on the
     #   instructor dashboard with a link to the new communications MFE version instead.
-    #   Stting the tool to false will leave the old bulk email tool experience in place.
+    #   Setting the tool to false will leave the old bulk email tool experience in place.
     # .. toggle_use_cases: opt_in
     # .. toggle_creation_date: 2022-03-21
     # .. toggle_target_removal_date: None
@@ -1018,7 +1010,7 @@ FEATURES = {
     # .. toggle_name: FEATURES['ENABLE_CERTIFICATES_IDV_REQUIREMENT']
     # .. toggle_implementation: DjangoSetting
     # .. toggle_default: False
-    # .. toggle_description: Whether to enforce ID Verification requirements for couse certificates generation
+    # .. toggle_description: Whether to enforce ID Verification requirements for course certificates generation
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2022-04-26
     # .. toggle_target_removal_date: None
@@ -1101,6 +1093,11 @@ DEFAULT_GROUPS = []
 # If this is true, random scores will be generated for the purpose of debugging the profile graphs
 GENERATE_PROFILE_SCORES = False
 
+# .. setting_name: GRADEBOOK_FREEZE_DAYS
+# .. setting_default: 30
+# .. setting_description: Sets the number of days after which the gradebook will freeze following the course's end.
+GRADEBOOK_FREEZE_DAYS = 30
+
 # Used with XQueue
 XQUEUE_WAITTIME_BETWEEN_REQUESTS = 5  # seconds
 XQUEUE_INTERFACE = {
@@ -1129,7 +1126,7 @@ MARKETING_EMAILS_OPT_IN = False
 # .. toggle_name: ENABLE_COPPA_COMPLIANCE
 # .. toggle_implementation: DjangoSetting
 # .. toggle_default: False
-# .. toggle_description: When True, inforces COPPA compliance and removes YOB field from registration form and accounnt
+# .. toggle_description: When True, enforces COPPA compliance and removes YOB field from registration form and account
 # .. settings page. Also hide YOB banner from profile page.
 # .. toggle_use_cases: open_edx
 # .. toggle_creation_date: 2021-10-27
@@ -1157,26 +1154,12 @@ STATUS_MESSAGE_PATH = ENV_ROOT / "status_message.json"
 
 DATABASE_ROUTERS = [
     'openedx.core.lib.django_courseware_routers.StudentModuleHistoryExtendedRouter',
-    'openedx.core.lib.blockstore_api.db_routers.BlockstoreRouter',
     'edx_django_utils.db.read_replica.ReadReplicaRouter',
 ]
 
 ############################ Cache Configuration ###############################
 
 CACHES = {
-    'blockstore': {
-        'KEY_PREFIX': 'blockstore',
-        'KEY_FUNCTION': 'common.djangoapps.util.memcache.safe_key',
-        'LOCATION': ['localhost:11211'],
-        'TIMEOUT': '86400',  # This data should be long-lived for performance, BundleCache handles invalidation
-        'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
-        'OPTIONS': {
-            'no_delay': True,
-            'ignore_exc': True,
-            'use_pooling': True,
-            'connect_timeout': 0.5
-        }
-    },
     'course_structure_cache': {
         'KEY_PREFIX': 'course_structure',
         'KEY_FUNCTION': 'common.djangoapps.util.memcache.safe_key',
@@ -1381,7 +1364,7 @@ CONTEXT_PROCESSORS = [
     # Mobile App processor (Detects if request is from the mobile app)
     'lms.djangoapps.mobile_api.context_processor.is_from_mobile_app',
 
-    # Context processor necesarry for the survey report message appear on the admin site
+    # Context processor necessary for the survey report message appear on the admin site
     'openedx.features.survey_report.context_processors.admin_extra_context'
 
 
@@ -1472,7 +1455,7 @@ SEARCH_COURSEWARE_CONTENT_LOG_PARAMS = False
 
 # .. setting_name: ELASTIC_SEARCH_INDEX_PREFIX
 # .. setting_default: ''
-# .. setting_description: Specifies the prefix used when namixng elasticsearch indexes related to edx-search.
+# .. setting_description: Specifies the prefix used when naming elasticsearch indexes related to edx-search.
 ELASTICSEARCH_INDEX_PREFIX = ""
 
 VIDEO_CDN_URL = {
@@ -1704,6 +1687,11 @@ XBLOCK_FS_STORAGE_PREFIX = None
 #     for more reference.
 XBLOCK_SETTINGS = {}
 
+# .. setting_name: XBLOCK_RUNTIME_V2_EPHEMERAL_DATA_CACHE
+# .. setting_default: default
+# .. setting_description: The django cache key of the cache to use for storing anonymous user state for XBlocks.
+XBLOCK_RUNTIME_V2_EPHEMERAL_DATA_CACHE = 'default'
+
 ############# ModuleStore Configuration ##########
 
 MODULESTORE_BRANCH = 'published-only'
@@ -1854,7 +1842,7 @@ CODE_JAIL = {
 #   ]
 COURSES_WITH_UNSAFE_CODE = []
 
-# Cojail REST service
+# Code jail REST service
 ENABLE_CODEJAIL_REST_SERVICE = False
 # .. setting_name: CODE_JAIL_REST_SERVICE_REMOTE_EXEC
 # .. setting_default: 'xmodule.capa.safe_exec.remote_exec.send_safe_exec_request_v0'
@@ -1944,6 +1932,10 @@ STATICFILES_DIRS = [
     COMMON_ROOT / "static",
     PROJECT_ROOT / "static",
     NODE_MODULES_ROOT / "@edx",
+    # Temporarily adding the following static path as we are migrating the built-in blocks' Sass to vanilla CSS.
+    # Once all of the built-in blocks are extracted from edx-platform, we can remove this static path.
+    # Relevant ticket: https://github.com/openedx/edx-platform/issues/35300
+    XMODULE_ROOT / "static",
 ]
 
 FAVICON_PATH = 'images/favicon.ico'
@@ -2265,6 +2257,7 @@ MIDDLEWARE = [
     'edx_django_utils.monitoring.CodeOwnerMonitoringMiddleware',
     'edx_django_utils.monitoring.CookieMonitoringMiddleware',
     'edx_django_utils.monitoring.DeploymentMonitoringMiddleware',
+    'edx_django_utils.monitoring.FrontendMonitoringMiddleware',
 
     # Before anything that looks at cookies, especially the session middleware
     'openedx.core.djangoapps.cookie_metadata.middleware.CookieNameChange',
@@ -2295,7 +2288,6 @@ MIDDLEWARE = [
     'openedx.core.djangoapps.safe_sessions.middleware.EmailChangeMiddleware',
 
     'common.djangoapps.student.middleware.UserStandingMiddleware',
-    'openedx.core.djangoapps.contentserver.middleware.StaticContentServer',
 
     # Adds user tags to tracking events
     # Must go before TrackMiddleware, to get the context set up
@@ -3149,7 +3141,7 @@ INSTALLED_APPS = [
     # User tours
     'lms.djangoapps.user_tours',
 
-    # New (Blockstore-based) XBlock runtime
+    # New (Learning-Core-based) XBlock runtime
     'openedx.core.djangoapps.xblock.apps.LmsXBlockAppConfig',
 
     # Student support tools
@@ -3191,9 +3183,13 @@ INSTALLED_APPS = [
     # Notes
     'lms.djangoapps.edxnotes',
 
-    # User API
+    # Django Rest Framework
     'rest_framework',
 
+    # REST framework JWT Auth
+    'rest_framework_jwt',
+
+    # User API
     'openedx.core.djangoapps.user_api',
 
     # Different Course Modes
@@ -3354,12 +3350,8 @@ INSTALLED_APPS = [
     # Management of external user ids
     'openedx.core.djangoapps.external_user_ids',
 
-    # Provides api for Demographics support
-    'openedx.core.djangoapps.demographics',
-
     # Management of per-user schedules
     'openedx.core.djangoapps.schedules',
-    'rest_framework_jwt',
 
     # Learning Sequence Navigation
     'openedx.core.djangoapps.content.learning_sequences.apps.LearningSequencesConfig',
@@ -3385,9 +3377,6 @@ INSTALLED_APPS = [
     # For edx ace template tags
     'edx_ace',
 
-    # Blockstore
-    'blockstore.apps.bundles',
-
     # MFE API
     'lms.djangoapps.mfe_config_api',
 
@@ -3397,9 +3386,10 @@ INSTALLED_APPS = [
     'openedx_events',
 
     # Learning Core Apps, used by v2 content libraries (content_libraries app)
-    "openedx_learning.core.components",
-    "openedx_learning.core.contents",
-    "openedx_learning.core.publishing",
+    "openedx_learning.apps.authoring.collections",
+    "openedx_learning.apps.authoring.components",
+    "openedx_learning.apps.authoring.contents",
+    "openedx_learning.apps.authoring.publishing",
 ]
 
 
@@ -3689,6 +3679,9 @@ if FEATURES.get('ENABLE_CORS_HEADERS'):
 # because that decision might happen in a later config file. (The headers to
 # allow is an application logic, and not site policy.)
 CORS_ALLOW_HEADERS = corsheaders_default_headers + (
+    'cache-control',
+    'expires',
+    'pragma',
     'use-jwt-cookie',
 )
 
@@ -4303,6 +4296,10 @@ SOCIAL_PLATFORMS = {
     }
 }
 
+# Enable First Purchase Discount offer override
+FIRST_PURCHASE_DISCOUNT_OVERRIDE_CODE = ''
+FIRST_PURCHASE_DISCOUNT_OVERRIDE_PERCENTAGE = 15
+
 # E-Commerce API Configuration
 ECOMMERCE_PUBLIC_URL_ROOT = 'http://localhost:8002'
 ECOMMERCE_API_URL = 'http://localhost:8002/api/v2'
@@ -4310,13 +4307,6 @@ ECOMMERCE_API_TIMEOUT = 5
 ECOMMERCE_ORDERS_API_CACHE_TIMEOUT = 3600
 ECOMMERCE_SERVICE_WORKER_USERNAME = 'ecommerce_worker'
 ECOMMERCE_API_SIGNING_KEY = 'SET-ME-PLEASE'
-
-# E-Commerce Commerce Coordinator Configuration
-COMMERCE_COORDINATOR_URL_ROOT = 'http://localhost:8140'
-COMMERCE_COORDINATOR_REFUND_PATH = '/lms/refund/'
-COMMERCE_COORDINATOR_REFUND_SOURCE_SYSTEMS = ('SET-ME-PLEASE',)
-COMMERCE_COORDINATOR_SERVICE_WORKER_USERNAME = 'commerce_coordinator_worker'
-COORDINATOR_CHECKOUT_REDIRECT_PATH = '/lms/payment_page_redirect/'
 
 # Exam Service
 EXAMS_SERVICE_URL = 'http://localhost:18740/api/v1'
@@ -4534,7 +4524,7 @@ FINANCIAL_ASSISTANCE_MAX_LENGTH = 2500
 
 REGISTRATION_EXTENSION_FORM = None
 
-# Identifier included in the User Agent from open edX mobile apps.
+# Identifier included in the User Agent from Open edX mobile apps.
 MOBILE_APP_USER_AGENT_REGEXES = [
     r'edX/org.edx.mobile',
 ]
@@ -4686,11 +4676,11 @@ ENTERPRISE_ALL_SERVICE_USERNAMES = [
     'enterprise_channel_worker',
     'enterprise_access_worker',
     'enterprise_subsidy_worker',
-    'subscriptions_worker'
 ]
 
 # Setting for Open API key and prompts used by edx-enterprise.
-OPENAI_API_KEY = ''
+CHAT_COMPLETION_API = 'https://example.com/chat/completion'
+CHAT_COMPLETION_API_KEY = 'i am a key'
 LEARNER_ENGAGEMENT_PROMPT_FOR_ACTIVE_CONTRACT = ''
 LEARNER_ENGAGEMENT_PROMPT_FOR_NON_ACTIVE_CONTRACT = ''
 LEARNER_PROGRESS_PROMPT_FOR_ACTIVE_CONTRACT = ''
@@ -4745,6 +4735,10 @@ SYSTEM_TO_FEATURE_ROLE_MAPPING = {
         ENTERPRISE_REPORTING_CONFIG_ADMIN_ROLE,
         ENTERPRISE_FULFILLMENT_OPERATOR_ROLE,
         ENTERPRISE_SSO_ORCHESTRATOR_OPERATOR_ROLE,
+    ],
+    SYSTEM_ENTERPRISE_PROVISIONING_ADMIN_ROLE: [
+        PROVISIONING_ENTERPRISE_CUSTOMER_ADMIN_ROLE,
+        PROVISIONING_PENDING_ENTERPRISE_CUSTOMER_ADMIN_ROLE,
     ],
 }
 
@@ -5196,57 +5190,6 @@ RATE_LIMIT_FOR_VIDEO_METADATA_API = '10/minute'
 ########################## MAILCHIMP SETTINGS #################################
 MAILCHIMP_NEW_USER_LIST_ID = ""
 
-########################## BLOCKSTORE #####################################
-
-# .. setting_name: XBLOCK_RUNTIME_V2_EPHEMERAL_DATA_CACHE
-# .. setting_default: default
-# .. setting_description: The django cache key of the cache to use for storing anonymous user state for XBlocks.
-XBLOCK_RUNTIME_V2_EPHEMERAL_DATA_CACHE = 'default'
-
-# .. setting_name: BLOCKSTORE_BUNDLE_CACHE_TIMEOUT
-# .. setting_default: 3000
-# .. setting_description: Maximum time-to-live of cached Bundles fetched from
-#     Blockstore, in seconds. When the values returned from Blockstore have
-#     TTLs of their own (such as signed S3 URLs), the maximum TTL of this cache
-#     must be lower than the minimum TTL of those values.
-#     We use a default of 3000s (50mins) because temporary URLs are often
-#     configured to expire after one hour.
-BLOCKSTORE_BUNDLE_CACHE_TIMEOUT = 3000
-
-# .. setting_name: BUNDLE_ASSET_URL_STORAGE_KEY
-# .. setting_default: None
-# .. setting_description: When this is set, `BUNDLE_ASSET_URL_STORAGE_SECRET` is
-#  set, and `boto3` is installed, this is used as an AWS IAM access key for
-#  generating signed, read-only URLs for blockstore assets stored in S3.
-#  Otherwise, URLs are generated based on the default storage configuration.
-#  See `blockstore.apps.bundles.storage.LongLivedSignedUrlStorage` for details.
-BUNDLE_ASSET_URL_STORAGE_KEY = None
-
-# .. setting_name: BUNDLE_ASSET_URL_STORAGE_SECRET
-# .. setting_default: None
-# .. setting_description: When this is set, `BUNDLE_ASSET_URL_STORAGE_KEY` is
-#  set, and `boto3` is installed, this is used as an AWS IAM secret key for
-#  generating signed, read-only URLs for blockstore assets stored in S3.
-#  Otherwise, URLs are generated based on the default storage configuration.
-#  See `blockstore.apps.bundles.storage.LongLivedSignedUrlStorage` for details.
-BUNDLE_ASSET_URL_STORAGE_SECRET = None
-
-# .. setting_name: BUNDLE_ASSET_STORAGE_SETTINGS
-# .. setting_default: dict, appropriate for file system storage.
-# .. setting_description: When this is set, `BUNDLE_ASSET_URL_STORAGE_KEY` is
-#  set, and `boto3` is installed, this provides the bucket name and location for blockstore assets stored in S3.
-#  See `blockstore.apps.bundles.storage.LongLivedSignedUrlStorage` for details.
-BUNDLE_ASSET_STORAGE_SETTINGS = dict(
-    # Backend storage
-    # STORAGE_CLASS='storages.backends.s3boto3.S3Boto3Storage',
-    # STORAGE_KWARGS=dict(bucket='bundle-asset-bucket', location='/path-to-bundles/'),
-    STORAGE_CLASS='django.core.files.storage.FileSystemStorage',
-    STORAGE_KWARGS=dict(
-        location=MEDIA_ROOT,
-        base_url=MEDIA_URL,
-    ),
-)
-
 SYSLOG_SERVER = ''
 FEEDBACK_SUBMISSION_EMAIL = ''
 GITHUB_REPO_ROOT = '/edx/var/edxapp/data'
@@ -5426,21 +5369,10 @@ ENTERPRISE_MANUAL_REPORTING_CUSTOMER_UUIDS = []
 
 AVAILABLE_DISCUSSION_TOURS = []
 
-######################## Subscriptions API SETTINGS ########################
-SUBSCRIPTIONS_ROOT_URL = ""
-SUBSCRIPTIONS_API_PATH = f"{SUBSCRIPTIONS_ROOT_URL}/api/v1/stripe-subscription/"
-
-SUBSCRIPTIONS_LEARNER_HELP_CENTER_URL = None
-SUBSCRIPTIONS_BUY_SUBSCRIPTION_URL = f"{SUBSCRIPTIONS_ROOT_URL}/api/v1/stripe-subscribe/"
-SUBSCRIPTIONS_MANAGE_SUBSCRIPTION_URL = None
-SUBSCRIPTIONS_MINIMUM_PRICE = '$39'
-SUBSCRIPTIONS_TRIAL_LENGTH = 7
-SUBSCRIPTIONS_SERVICE_WORKER_USERNAME = 'subscriptions_worker'
-
 ############## NOTIFICATIONS ##############
 NOTIFICATIONS_EXPIRY = 60
 EXPIRED_NOTIFICATIONS_DELETE_BATCH_SIZE = 10000
-NOTIFICATION_CREATION_BATCH_SIZE = 83
+NOTIFICATION_CREATION_BATCH_SIZE = 76
 NOTIFICATIONS_DEFAULT_FROM_EMAIL = "no-reply@example.com"
 NOTIFICATION_TYPE_ICONS = {}
 DEFAULT_NOTIFICATION_ICON_URL = ""
@@ -5519,6 +5451,10 @@ EVENT_BUS_PRODUCER_CONFIG = {
         'learning-course-access-role-lifecycle':
             {'event_key_field': 'course_access_role_data.course_key', 'enabled': False},
     },
+    'org.openedx.enterprise.learner_credit_course_enrollment.revoked.v1': {
+        'learner-credit-course-enrollment-lifecycle':
+            {'event_key_field': 'learner_credit_course_enrollment.uuid', 'enabled': False},
+    },
     # CMS events. These have to be copied over here because cms.common adds some derived entries as well,
     # and the derivation fails if the keys are missing. If we ever fully decouple the lms and cms settings,
     # we can remove these.
@@ -5594,3 +5530,14 @@ SURVEY_REPORT_CHECK_THRESHOLD = 6
 # .. setting_default: empty dictionary
 # .. setting_description: Dictionary with additional information that you want to share in the report.
 SURVEY_REPORT_EXTRA_DATA = {}
+
+
+# .. setting_name: DISABLED_COUNTRIES
+# .. setting_default: []
+# .. setting_description: List of country codes that should be disabled
+# .. for now it wil impact country listing in auth flow and user profile.
+# .. eg ['US', 'CA']
+DISABLED_COUNTRIES = []
+
+
+LMS_COMM_DEFAULT_FROM_EMAIL = "no-reply@example.com"

@@ -49,7 +49,7 @@ from xmodule.modulestore.tests.factories import (
 )
 from xmodule.partitions.partitions import (
     ENROLLMENT_TRACK_PARTITION_ID,
-    MINIMUM_STATIC_PARTITION_ID,
+    MINIMUM_UNUSED_PARTITION_ID,
     Group,
     UserPartition,
 )
@@ -313,12 +313,12 @@ class GetItemTest(ItemTest):
         resp = self.create_xblock(
             parent_usage_key=split_test_usage_key,
             category="html",
-            boilerplate="zooming_image.yaml",
+            boilerplate="latex_html.yaml",
         )
         self.assertEqual(resp.status_code, 200)
         html, __ = self._get_container_preview(split_test_usage_key)
         self.assertIn("Announcement", html)
-        self.assertIn("Zooming", html)
+        self.assertIn("LaTeX", html)
 
     def test_split_test_edited(self):
         """
@@ -422,16 +422,16 @@ class GetItemTest(ItemTest):
         # by dynamic user partitions.
         self.course.user_partitions = [
             UserPartition(
-                id=MINIMUM_STATIC_PARTITION_ID,
+                id=MINIMUM_UNUSED_PARTITION_ID,
                 name="Random user partition",
                 scheme=UserPartition.get_scheme("random"),
                 description="Random user partition",
                 groups=[
                     Group(
-                        id=MINIMUM_STATIC_PARTITION_ID + 1, name="Group A"
+                        id=MINIMUM_UNUSED_PARTITION_ID + 1, name="Group A"
                     ),  # See note above.
                     Group(
-                        id=MINIMUM_STATIC_PARTITION_ID + 2, name="Group B"
+                        id=MINIMUM_UNUSED_PARTITION_ID + 2, name="Group B"
                     ),  # See note above.
                 ],
             ),
@@ -463,18 +463,18 @@ class GetItemTest(ItemTest):
                     ],
                 },
                 {
-                    "id": MINIMUM_STATIC_PARTITION_ID,
+                    "id": MINIMUM_UNUSED_PARTITION_ID,
                     "name": "Random user partition",
                     "scheme": "random",
                     "groups": [
                         {
-                            "id": MINIMUM_STATIC_PARTITION_ID + 1,
+                            "id": MINIMUM_UNUSED_PARTITION_ID + 1,
                             "name": "Group A",
                             "selected": False,
                             "deleted": False,
                         },
                         {
-                            "id": MINIMUM_STATIC_PARTITION_ID + 2,
+                            "id": MINIMUM_UNUSED_PARTITION_ID + 2,
                             "name": "Group B",
                             "selected": False,
                             "deleted": False,
@@ -522,6 +522,7 @@ class GetItemTest(ItemTest):
         problem1 = self.create_xblock(
             parent_usage_key=vert_usage_key, display_name="problem1", category="problem"
         )
+        print(problem1)
         problem_usage_key = self.response_usage_key(problem1)
 
         def assert_xblock_info(xblock, xblock_info):
@@ -557,7 +558,11 @@ class GetItemTest(ItemTest):
                     xblock = parent_xblock
             else:
                 self.assertNotIn("ancestors", response)
-                self.assertEqual(get_block_info(xblock), response)
+                xblock_info = get_block_info(xblock)
+                # TODO: remove after beta testing for the new problem editor parser
+                if xblock_info["category"] == "problem":
+                    xblock_info["metadata"]["default_to_advanced"] = False
+                self.assertEqual(xblock_info, response)
 
 
 @ddt.ddt
@@ -978,7 +983,7 @@ class TestDuplicateItem(ItemTest, DuplicateHelper, OpenEdxEventsTestMixin):
 
     def test_duplicate_library_content_block(self):  # pylint: disable=too-many-statements
         """
-        Test the LibraryContentBlock's special duplication process.
+        Test the LegacyLibraryContentBlock's special duplication process.
         """
         store = modulestore()
 
@@ -2444,13 +2449,13 @@ class TestEditSplitModule(ItemTest):
         self.user = UserFactory()
 
         self.first_user_partition_group_1 = Group(
-            str(MINIMUM_STATIC_PARTITION_ID + 1), "alpha"
+            str(MINIMUM_UNUSED_PARTITION_ID + 1), "alpha"
         )
         self.first_user_partition_group_2 = Group(
-            str(MINIMUM_STATIC_PARTITION_ID + 2), "beta"
+            str(MINIMUM_UNUSED_PARTITION_ID + 2), "beta"
         )
         self.first_user_partition = UserPartition(
-            MINIMUM_STATIC_PARTITION_ID,
+            MINIMUM_UNUSED_PARTITION_ID,
             "first_partition",
             "First Partition",
             [self.first_user_partition_group_1, self.first_user_partition_group_2],
@@ -2459,16 +2464,16 @@ class TestEditSplitModule(ItemTest):
         # There is a test point below (test_create_groups) that purposefully wants the group IDs
         # of the 2 partitions to overlap (which is not something that normally happens).
         self.second_user_partition_group_1 = Group(
-            str(MINIMUM_STATIC_PARTITION_ID + 1), "Group 1"
+            str(MINIMUM_UNUSED_PARTITION_ID + 1), "Group 1"
         )
         self.second_user_partition_group_2 = Group(
-            str(MINIMUM_STATIC_PARTITION_ID + 2), "Group 2"
+            str(MINIMUM_UNUSED_PARTITION_ID + 2), "Group 2"
         )
         self.second_user_partition_group_3 = Group(
-            str(MINIMUM_STATIC_PARTITION_ID + 3), "Group 3"
+            str(MINIMUM_UNUSED_PARTITION_ID + 3), "Group 3"
         )
         self.second_user_partition = UserPartition(
-            MINIMUM_STATIC_PARTITION_ID + 10,
+            MINIMUM_UNUSED_PARTITION_ID + 10,
             "second_partition",
             "Second Partition",
             [
@@ -2541,10 +2546,10 @@ class TestEditSplitModule(ItemTest):
         self.assertEqual("vertical", vertical_0.category)
         self.assertEqual("vertical", vertical_1.category)
         self.assertEqual(
-            "Group ID " + str(MINIMUM_STATIC_PARTITION_ID + 1), vertical_0.display_name
+            "Group ID " + str(MINIMUM_UNUSED_PARTITION_ID + 1), vertical_0.display_name
         )
         self.assertEqual(
-            "Group ID " + str(MINIMUM_STATIC_PARTITION_ID + 2), vertical_1.display_name
+            "Group ID " + str(MINIMUM_UNUSED_PARTITION_ID + 2), vertical_1.display_name
         )
 
         # Verify that the group_id_to_child mapping is correct.
@@ -3670,6 +3675,50 @@ class TestSpecialExamXBlockInfo(ItemTest):
     @patch_does_backend_support_onboarding
     @patch_get_exam_by_content_id_success
     @ddt.data(
+        ("lti_external", False, None),
+        ("other_proctoring_backend", True, "test_url"),
+    )
+    @ddt.unpack
+    def test_proctoring_values_correct_depending_on_lti_external(
+        self,
+        external_id,
+        expected_supports_onboarding_value,
+        expected_proctoring_link,
+        mock_get_exam_by_content_id,
+        mock_does_backend_support_onboarding,
+        _mock_get_exam_configuration_dashboard_url,
+    ):
+        sequential = BlockFactory.create(
+            parent_location=self.chapter.location,
+            category="sequential",
+            display_name="Test Lesson 1",
+            user_id=self.user.id,
+            is_proctored_enabled=True,
+            is_time_limited=True,
+            default_time_limit_minutes=100,
+            is_onboarding_exam=False,
+        )
+
+        # set course.proctoring_provider to lti_external
+        self.course.proctoring_provider = external_id
+        mock_get_exam_by_content_id.return_value = {"external_id": external_id}
+
+        # mock_does_backend_support_onboarding returns True
+        mock_does_backend_support_onboarding.return_value = True
+        sequential = modulestore().get_item(sequential.location)
+        xblock_info = create_xblock_info(
+            sequential,
+            include_child_info=True,
+            include_children_predicate=ALWAYS,
+            course=self.course,
+        )
+        assert xblock_info["supports_onboarding"] is expected_supports_onboarding_value
+        assert xblock_info["proctoring_exam_configuration_link"] == expected_proctoring_link
+
+    @patch_get_exam_configuration_dashboard_url
+    @patch_does_backend_support_onboarding
+    @patch_get_exam_by_content_id_success
+    @ddt.data(
         ("test_external_id", True),
         (None, False),
     )
@@ -3727,6 +3776,42 @@ class TestSpecialExamXBlockInfo(ItemTest):
         )
         assert xblock_info["was_exam_ever_linked_with_external"] is False
         assert mock_get_exam_by_content_id.call_count == 1
+
+    @patch_get_exam_configuration_dashboard_url
+    @patch_does_backend_support_onboarding
+    @patch_get_exam_by_content_id_success
+    def test_special_exam_xblock_info_get_dashboard_error(
+        self,
+        mock_get_exam_by_content_id,
+        _mock_does_backend_support_onboarding,
+        mock_get_exam_configuration_dashboard_url,
+    ):
+        sequential = BlockFactory.create(
+            parent_location=self.chapter.location,
+            category="sequential",
+            display_name="Test Lesson 1",
+            user_id=self.user.id,
+            is_proctored_enabled=True,
+            is_time_limited=True,
+            default_time_limit_minutes=100,
+            is_onboarding_exam=False,
+        )
+        sequential = modulestore().get_item(sequential.location)
+        mock_get_exam_configuration_dashboard_url.side_effect = Exception("proctoring error")
+        xblock_info = create_xblock_info(
+            sequential,
+            include_child_info=True,
+            include_children_predicate=ALWAYS,
+        )
+
+        # no errors should be raised and proctoring_exam_configuration_link is None
+        assert xblock_info["is_proctored_exam"] is True
+        assert xblock_info["was_exam_ever_linked_with_external"] is True
+        assert xblock_info["is_time_limited"] is True
+        assert xblock_info["default_time_limit_minutes"] == 100
+        assert xblock_info["proctoring_exam_configuration_link"] is None
+        assert xblock_info["supports_onboarding"] is True
+        assert xblock_info["is_onboarding_exam"] is False
 
 
 class TestLibraryXBlockInfo(ModuleStoreTestCase):
