@@ -18,7 +18,6 @@ from common.djangoapps.third_party_auth.tests.testutil import ThirdPartyAuthTest
 from openedx.core.djangoapps.geoinfo.api import country_code_from_ip
 from openedx.core.djangoapps.site_configuration.tests.test_util import with_site_configuration
 from openedx.core.djangoapps.user_api.tests.test_views import UserAPITestCase
-from openedx.core.djangoapps.user_authn.api.tests.test_data import mfe_context_data_keys
 from openedx.core.djangolib.testing.utils import skip_unless_lms
 
 

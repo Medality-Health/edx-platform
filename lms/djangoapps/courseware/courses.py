@@ -600,6 +600,7 @@ def get_course_assignments(course_key, user, include_access=False, include_witho
     """
     if not user.id:
         return []
+
     store = modulestore()
     course_usage_key = store.make_course_usage_key(course_key)
     block_data = get_course_blocks(user, course_usage_key, allow_start_dates_in_future=True, include_completion=True)

@@ -473,7 +473,6 @@ djangorestframework==3.14.0
     #   -r requirements/edx/base.txt
     #   django-config-models
     #   django-user-tasks
-    #   djangorestframework-expander
     #   drf-jwt
     #   drf-spectacular
     #   drf-yasg
@@ -489,10 +488,6 @@ djangorestframework==3.14.0
     #   openedx-learning
     #   ora2
     #   super-csv
-djangorestframework-expander==0.2.3
-    # via
-    #   -r requirements/edx/base.txt
-    #   blockstore
 djangorestframework-xml==2.0.0
     # via
     #   -r requirements/edx/base.txt
@@ -993,7 +988,6 @@ mysqlclient==2.2.5
 newrelic==10.2.0
     # via
     #   -r requirements/edx/base.txt
-    #   blockstore
     #   edx-django-utils
 nh3==0.2.18
     # via -r requirements/edx/base.txt
@@ -1255,6 +1249,7 @@ pymemcache==4.0.0
     # via -r requirements/edx/base.txt
 pymongo==4.4.0
     # via
+    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.txt
     #   edx-opaque-keys
     #   event-tracking
@@ -1355,7 +1350,6 @@ python3-saml==1.16.0
     # via -r requirements/edx/base.txt
 pytz==2024.2
     # via
-    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.txt
     #   djangorestframework
     #   drf-yasg
@@ -1517,6 +1511,7 @@ snowflake-connector-python==3.12.2
     #   edx-enterprise
 social-auth-app-django==5.4.1
     # via
+    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/base.txt
     #   edx-auth-backends
 social-auth-core==4.5.4

@@ -30,6 +30,7 @@ course_mode_class = course_mode if course_mode else ''
 
     <%static:css group='style-certificates'/>
 
+
     <% ga_4_id = static.get_value("GOOGLE_ANALYTICS_4_ID", settings.GOOGLE_ANALYTICS_4_ID) %>
     % if ga_4_id:
         <script async src="https://www.googletagmanager.com/gtag/js?id=${ga_4_id}"></script>

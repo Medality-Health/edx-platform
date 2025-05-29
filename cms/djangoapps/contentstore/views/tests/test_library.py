@@ -75,41 +75,25 @@ class UnitTestLibraries(CourseTestCase):
             self.assertEqual(user_can_create_library(nostaff_user, None), False)
 
     # Global staff can create libraries for any org, even ones that don't exist.
-<<<<<<< HEAD
-    @mock.patch("cms.djangoapps.contentstore.views.library.LIBRARIES_ENABLED", True)
-=======
     @mock.patch("cms.djangoapps.contentstore.toggles.libraries_v1_enabled", True)
->>>>>>> 94d5c88d5f7a7bd9261831804c2b4a3197eeac2e
     def test_library_creator_status_with_is_staff_user(self):
         print(self.user.is_staff)
         self.assertEqual(user_can_create_library(self.user, 'aNyOrg'), True)
 
     # Global staff can create libraries for any org, but an org has to be supplied.
-<<<<<<< HEAD
-    @mock.patch("cms.djangoapps.contentstore.views.library.LIBRARIES_ENABLED", True)
-=======
     @mock.patch("cms.djangoapps.contentstore.toggles.libraries_v1_enabled", True)
->>>>>>> 94d5c88d5f7a7bd9261831804c2b4a3197eeac2e
     def test_library_creator_status_with_is_staff_user_no_org(self):
         print(self.user.is_staff)
         self.assertEqual(user_can_create_library(self.user, None), False)
 
     # When creator groups are enabled, global staff can create libraries in any org
-<<<<<<< HEAD
-    @mock.patch("cms.djangoapps.contentstore.views.library.LIBRARIES_ENABLED", True)
-=======
     @mock.patch("cms.djangoapps.contentstore.toggles.libraries_v1_enabled", True)
->>>>>>> 94d5c88d5f7a7bd9261831804c2b4a3197eeac2e
     def test_library_creator_status_for_enabled_creator_group_setting_with_is_staff_user(self):
         with mock.patch.dict('django.conf.settings.FEATURES', {"ENABLE_CREATOR_GROUP": True}):
             self.assertEqual(user_can_create_library(self.user, 'RandomOrg'), True)
 
     # When creator groups are enabled, course creators can create libraries in any org.
-<<<<<<< HEAD
-    @mock.patch("cms.djangoapps.contentstore.views.library.LIBRARIES_ENABLED", True)
-=======
     @mock.patch("cms.djangoapps.contentstore.toggles.libraries_v1_enabled", True)
->>>>>>> 94d5c88d5f7a7bd9261831804c2b4a3197eeac2e
     def test_library_creator_status_with_course_creator_role_for_enabled_creator_group_setting(self):
         _, nostaff_user = self.create_non_staff_authed_user_client()
         with mock.patch.dict('django.conf.settings.FEATURES', {"ENABLE_CREATOR_GROUP": True}):
@@ -118,11 +102,7 @@ class UnitTestLibraries(CourseTestCase):
 
     # When creator groups are enabled, course staff members can create libraries
     # but only in the org they are course staff for.
-<<<<<<< HEAD
-    @mock.patch("cms.djangoapps.contentstore.views.library.LIBRARIES_ENABLED", True)
-=======
     @mock.patch("cms.djangoapps.contentstore.toggles.libraries_v1_enabled", True)
->>>>>>> 94d5c88d5f7a7bd9261831804c2b4a3197eeac2e
     def test_library_creator_status_with_course_staff_role_for_enabled_creator_group_setting(self):
         _, nostaff_user = self.create_non_staff_authed_user_client()
         with mock.patch.dict('django.conf.settings.FEATURES', {"ENABLE_CREATOR_GROUP": True}):
@@ -132,11 +112,7 @@ class UnitTestLibraries(CourseTestCase):
 
     # When creator groups are enabled, course instructor members can create libraries
     # but only in the org they are course staff for.
-<<<<<<< HEAD
-    @mock.patch("cms.djangoapps.contentstore.views.library.LIBRARIES_ENABLED", True)
-=======
     @mock.patch("cms.djangoapps.contentstore.toggles.libraries_v1_enabled", True)
->>>>>>> 94d5c88d5f7a7bd9261831804c2b4a3197eeac2e
     def test_library_creator_status_with_course_instructor_role_for_enabled_creator_group_setting(self):
         _, nostaff_user = self.create_non_staff_authed_user_client()
         with mock.patch.dict('django.conf.settings.FEATURES', {"ENABLE_CREATOR_GROUP": True}):
@@ -415,8 +391,8 @@ class UnitTestLibraries(CourseTestCase):
 
     def test_get_component_templates(self):
         """
-        Verify that templates for adding discussion to content libraries are not provided,
-        but advanced components are provided.
+        Verify that templates for adding discussion and advanced components to
+        content libraries are not provided.
         """
         lib = LibraryFactory.create()
         lib.advanced_modules = ['lti']
@@ -424,7 +400,7 @@ class UnitTestLibraries(CourseTestCase):
         templates = [template['type'] for template in get_component_templates(lib, library=True)]
         self.assertIn('problem', templates)
         self.assertNotIn('discussion', templates)
-        self.assertIn('advanced', templates)
+        self.assertNotIn('advanced', templates)
         self.assertNotIn('openassessment', templates)
         self.assertNotIn('library', templates)
         self.assertNotIn('library_v2', templates)
@@ -432,7 +408,7 @@ class UnitTestLibraries(CourseTestCase):
 
     def test_advanced_problem_types(self):
         """
-        Verify that advanced problem types are also provided in problem component for libraries.
+        Verify that advanced problem types are not provided in problem component for libraries.
         """
         lib = LibraryFactory.create()
         lib.save()
@@ -450,7 +426,7 @@ class UnitTestLibraries(CourseTestCase):
         problem_type_categories = [problem_template['category'] for problem_template in problem_type_templates]
 
         for advance_problem_type in settings.ADVANCED_PROBLEM_TYPES:
-            self.assertIn(advance_problem_type['component'], problem_type_categories)
+            self.assertNotIn(advance_problem_type['component'], problem_type_categories)
 
     def test_manage_library_users(self):
         """

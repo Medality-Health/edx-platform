@@ -374,7 +374,6 @@ djangorestframework==3.14.0
     #   -r requirements/edx/kernel.in
     #   django-config-models
     #   django-user-tasks
-    #   djangorestframework-expander
     #   drf-jwt
     #   drf-spectacular
     #   drf-yasg
@@ -390,8 +389,6 @@ djangorestframework==3.14.0
     #   openedx-learning
     #   ora2
     #   super-csv
-djangorestframework-expander==0.2.3
-    # via blockstore
 djangorestframework-xml==2.0.0
     # via edx-enterprise
 dnspython==2.7.0
@@ -1166,6 +1163,7 @@ snowflake-connector-python==3.12.2
     # via edx-enterprise
 social-auth-app-django==5.4.1
     # via
+    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/kernel.in
     #   edx-auth-backends
 social-auth-core==4.5.4

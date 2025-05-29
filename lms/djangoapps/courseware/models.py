@@ -187,7 +187,7 @@ class BaseStudentModuleHistory(models.Model):
     """
     objects = ChunkingManager()
 
-    # Using an inner class with a getter to simulate a classproperty
+    # @medality_custom - using an inner class with a getter to simulate a classproperty
     # Similar to an instance's @property, but doesn't require a reference to an instance
     # Class.HISTORY_SAVING_TYPES is accessed without calling a method
     # The value but must be calculated real-time to avoid referencing settings before django is initialized

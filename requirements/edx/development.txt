@@ -609,7 +609,6 @@ djangorestframework==3.14.0
     #   -r requirements/edx/testing.txt
     #   django-config-models
     #   django-user-tasks
-    #   djangorestframework-expander
     #   drf-jwt
     #   drf-spectacular
     #   drf-yasg
@@ -1308,7 +1307,6 @@ newrelic==10.2.0
     # via
     #   -r requirements/edx/doc.txt
     #   -r requirements/edx/testing.txt
-    #   blockstore
     #   edx-django-utils
 nh3==0.2.18
     # via
@@ -1986,6 +1984,7 @@ snowflake-connector-python==3.12.2
     #   edx-enterprise
 social-auth-app-django==5.4.1
     # via
+    #   -c requirements/edx/../constraints.txt
     #   -r requirements/edx/doc.txt
     #   -r requirements/edx/testing.txt
     #   edx-auth-backends

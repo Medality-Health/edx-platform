@@ -8,7 +8,6 @@ from unittest.mock import Mock, PropertyMock, patch
 
 import ddt
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.test import TestCase
 from django.test.client import RequestFactory
@@ -3893,7 +3892,7 @@ class TestLibraryXBlockCreation(ItemTest):
         xblock_locator = lib.children[0]
         self.assertEqual(self.store.get_item(xblock_locator).display_name, "Test")
 
-    def test_add_discussion(self):
+    def test_no_add_discussion(self):
         """
         Verify we cannot add a discussion block to a Library.
         """
@@ -3903,9 +3902,9 @@ class TestLibraryXBlockCreation(ItemTest):
         )
         self.assertEqual(response.status_code, 400)
         lib = self.store.get_library(lib.location.library_key)
-        self.assertTrue(lib.children)
+        self.assertFalse(lib.children)
 
-    def test_add_advanced(self):
+    def test_no_add_advanced(self):
         lib = LibraryFactory.create()
         lib.advanced_modules = ["lti"]
         lib.save()
@@ -3914,7 +3913,7 @@ class TestLibraryXBlockCreation(ItemTest):
         )
         self.assertEqual(response.status_code, 400)
         lib = self.store.get_library(lib.location.library_key)
-        self.assertTrue(lib.children)
+        self.assertFalse(lib.children)
 
 
 @ddt.ddt

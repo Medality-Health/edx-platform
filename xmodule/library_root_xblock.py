@@ -4,7 +4,6 @@
 
 
 import logging
-from django.conf import settings
 
 from web_fragments.fragment import Fragment
 from xblock.core import XBlock
@@ -119,7 +118,7 @@ class LibraryRoot(XBlock):
 
     @property
     def id(self):
-        """Return the course_id for this course"""
+        """@medality_custom - return the course_id for this course"""
         return self.location.course_key
 
     @property

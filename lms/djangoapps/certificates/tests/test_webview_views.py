@@ -351,6 +351,7 @@ class CertificatesViewsTests(CommonCertificatesTestCase, CacheIsolationTestCase)
     def test_render_certificate_html_view_with_facebook_meta_tags(self):
         """
         Test view html certificate if share to FB is enabled.
+
         If 'facebook_share_enabled=True', <meta> tags with property="og:..."
         must be enabled to pass parameters to FB.
         """
@@ -383,6 +384,7 @@ class CertificatesViewsTests(CommonCertificatesTestCase, CacheIsolationTestCase)
     def test_render_certificate_html_view_without_facebook_meta_tags(self):
         """
         Test view html certificate if share to FB is disabled.
+
         If 'facebook_share_enabled=False', html certificate view
         should not contain <meta> tags with parameters property="og:..."
         """
