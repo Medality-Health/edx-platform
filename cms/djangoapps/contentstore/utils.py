@@ -2084,7 +2084,7 @@ def get_container_handler_context(request, usage_key, courselike, xblock):  # py
         'user_clipboard': user_clipboard,
         'is_fullwidth_content': is_library_xblock,
         'course_sequence_ids': course_sequence_ids,
-        'library_content_picker_url': get_library_content_picker_url(course.id),
+        'library_content_picker_url': get_library_content_picker_url(courselike.id),
     }
     # @medality_custom: end support context_course vs context_library
     return context
