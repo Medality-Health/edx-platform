@@ -68,7 +68,7 @@ def connect_to_mongodb(
     if user is not None and password is not None and not db.startswith('test_'):
         connection_params.update({'username': user, 'password': password, 'authSource': auth_source})
 
-    mongo_conn = pymongo.MongoClient(**connection_params)
+    mongo_conn = pymongo.MongoClient(tls=False, **connection_params) # @medality_custom
 
     if proxy:
         mongo_conn = MongoProxy(
