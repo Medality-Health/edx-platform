@@ -49,6 +49,7 @@ class MongoContentStore(ContentStore):
             'user': user,
             'password': password,
             'proxy': False,
+            'tls': kwargs.get('tls', False) # @medality_custom
             **kwargs
         }
         self.bucket = bucket
