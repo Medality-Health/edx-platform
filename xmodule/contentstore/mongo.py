@@ -58,7 +58,6 @@ class MongoContentStore(ContentStore):
         """
         Connects to mongodb.
         """
-        print("Connection params:", self.connection_params)
         mongo_db = connect_to_mongodb(**self.connection_params)
 
         self.fs = gridfs.GridFS(mongo_db, self.bucket)  # pylint: disable=invalid-name
