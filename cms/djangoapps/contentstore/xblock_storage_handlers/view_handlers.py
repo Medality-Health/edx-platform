@@ -321,6 +321,8 @@ def _update_with_callback(xblock, user, old_metadata=None, old_content=None):
     return xblock_updated
 
 
+# @medality_custom
+@pluggable_override("OVERRIDE_SAVE_XBLOCK")
 def _save_xblock(
     user,
     xblock,
