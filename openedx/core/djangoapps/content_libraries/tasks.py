@@ -220,6 +220,11 @@ def _sync_children(
         source_blocks.extend(_problem_type_filter(store, library, dest_block.capa_type))
     else:
         source_blocks.extend(library.children)
+    
+    # @medality_custom
+    if filter_fn:
+        source_blocks = filter_fn(source_blocks)
+
     with store.bulk_operations(dest_block.scope_ids.usage_id.context_key):
         try:
             dest_block.source_library_version = str(library.location.library_key.version_guid)
