@@ -204,31 +204,33 @@ def _parse_time(time_isoformat):
 @set_code_owner_attribute
 def update_search_index(course_id, triggered_time_isoformat):
     """ Updates course search index. """
-    try:
-        course_key = CourseKey.from_string(course_id)
+    # @medality_custom
+    return
+    # try:
+    #     course_key = CourseKey.from_string(course_id)
 
-        # We skip search indexing for CCX courses because there is currently
-        # some issue around Modulestore caching that makes it prohibitively
-        # expensive (sometimes hours-long for really complex courses).
-        if isinstance(course_key, CCXLocator):
-            LOGGER.warning(
-                'Search indexing skipped for CCX Course %s (this is currently too slow to run in production)',
-                course_id
-            )
-            return
+    #     # We skip search indexing for CCX courses because there is currently
+    #     # some issue around Modulestore caching that makes it prohibitively
+    #     # expensive (sometimes hours-long for really complex courses).
+    #     if isinstance(course_key, CCXLocator):
+    #         LOGGER.warning(
+    #             'Search indexing skipped for CCX Course %s (this is currently too slow to run in production)',
+    #             course_id
+    #         )
+    #         return
 
-        CoursewareSearchIndexer.index(modulestore(), course_key, triggered_at=(_parse_time(triggered_time_isoformat)))
+    #     CoursewareSearchIndexer.index(modulestore(), course_key, triggered_at=(_parse_time(triggered_time_isoformat)))
 
-    except SearchIndexingError as exc:
-        error_list = exc.error_list
-        LOGGER.error(
-            "Search indexing error for complete course %s - %s - %s",
-            course_id,
-            str(exc),
-            error_list,
-        )
-    else:
-        LOGGER.debug('Search indexing successful for complete course %s', course_id)
+    # except SearchIndexingError as exc:
+    #     error_list = exc.error_list
+    #     LOGGER.error(
+    #         "Search indexing error for complete course %s - %s - %s",
+    #         course_id,
+    #         str(exc),
+    #         error_list,
+    #     )
+    # else:
+    #     LOGGER.debug('Search indexing successful for complete course %s', course_id)
 
 
 @shared_task
