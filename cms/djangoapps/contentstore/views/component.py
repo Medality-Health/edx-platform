@@ -307,6 +307,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'itembank',
         'select_from_library',
         'typeform',
+        'key_images',
     ]
     if library:
         component_types = [component for component in component_types
