@@ -33,7 +33,7 @@ _ = lambda text: text
 # HACK: This shouldn't be hard-coded to two types
 # OBSOLETE: This obsoletes 'type'
 # @medality_custom
-CLASS_PRIORITY = ['video', 'problem', 'case_report']
+CLASS_PRIORITY = ['video', 'problem', 'case_report', 'case_study']
 
 
 class VerticalFields:

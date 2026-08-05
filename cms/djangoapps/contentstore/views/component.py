@@ -57,6 +57,8 @@ COMPONENT_TYPES = [
     'case_file',
     'case_history',
     'case_report',
+    'case_study',
+    'case_study_unit',
     'drag_and_drop',
     'html',
     'key_images',
@@ -278,6 +280,8 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'case_file': _("Case File (URL)"),
         'ambra_quiz': _("Case File Problem"),
         'case_report': _("Case Report"),
+        'case_study': _("Case Study"),
+        'case_study_unit': _("Case Study Unit"),
         'drag_and_drop': _("Drag and Drop"),
         'html': _("Text"),
         'key_images': _("Key Images"),
@@ -308,6 +312,8 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'select_from_library',
         'typeform',
         'key_images',
+        'case_study',
+        'case_study_unit',
     ]
     if library:
         component_types = [component for component in component_types
