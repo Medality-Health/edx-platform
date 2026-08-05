@@ -59,6 +59,7 @@ COMPONENT_TYPES = [
     'case_report',
     'drag_and_drop',
     'html',
+    'key_images',
     'pdf',
     'ppt',
     'problem',
@@ -279,6 +280,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'case_report': _("Case Report"),
         'drag_and_drop': _("Drag and Drop"),
         'html': _("Text"),
+        'key_images': _("Key Images"),
         'pdf': _("PDF"),
         'ppt': _("Powerpoint"),
         'problem': _("Problem"),
@@ -305,6 +307,7 @@ def get_component_templates(courselike, library=False):  # lint-amnesty, pylint:
         'itembank',
         'select_from_library',
         'typeform',
+        'key_images',
     ]
     if library:
         component_types = [component for component in component_types
