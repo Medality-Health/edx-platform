@@ -217,8 +217,6 @@
           }
         }
 
-        console.log("Initializing TinyMCE with the following configuration: ", tinyMceConfig);
-
         this.tiny_mce_textarea = $(".tiny-mce", this.element).tinymce(tinyMceConfig);
         tinymce.addI18n('en', {
 
