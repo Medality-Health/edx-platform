@@ -97,6 +97,7 @@
         tinyMCE.suffix = ".min";
 
         var tinyMceConfig = {
+          license_key: "gpl", // @medality-custom - see MRI-8788 description for details
           script_url: baseUrl + "js/vendor/tinymce/js/tinymce/tinymce.full.min.js",
           font_formats: _getFonts(),
           theme: "silver",
