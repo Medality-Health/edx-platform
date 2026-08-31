@@ -57,7 +57,6 @@ COMPONENT_TYPES = [
     'case_file',
     'case_history',
     'case_report',
-    'case_study',
     'case_study_unit',
     'drag_and_drop',
     'html',
