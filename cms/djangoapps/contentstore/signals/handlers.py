@@ -141,7 +141,8 @@ def listen_for_course_publish(sender, course_key, **kwargs):  # pylint: disable=
 
     if key_supports_outlines(course_key):
         # Push the course outline to learning_sequences asynchronously.
-        update_outline_from_modulestore_task.delay(course_key_str)
+        # @medality_custom
+        transaction.on_commit(lambda: update_outline_from_modulestore_task.delay(course_key_str))
 
     # Kick off a courseware indexing action after the data is ready
     if CoursewareSearchIndexer.indexing_is_enabled() and CourseAboutSearchIndexer.indexing_is_enabled():
